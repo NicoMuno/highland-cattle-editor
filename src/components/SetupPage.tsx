@@ -10,7 +10,7 @@ type SetupState = {
   workspacePath: string;
 };
 
-export default function SetupView(props: { onComplete: (workspacePath: string) => void }) {
+export default function SetupPage(props: { onComplete: (workspacePath: string) => void }) {
   const [mode, setMode] = useState<Mode>("browse");
 
   const [form, setForm] = useState<SetupState>({

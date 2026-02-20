@@ -1,14 +1,17 @@
 import React, { useEffect, useState } from "react";
 import Layout from "./components/Layout";
-import SetupView from "./views/SetupView";
+import SetupPage from "./components/SetupPage";
+import DashboardPage from "./components/dashboard/DashboardPage"
+import DummyEditorPage from "./components/DummyPage";
+
+import EditorHub from "./components/editor/EditorHub";
+import EditorRouter from "./components/editor/EditorRouter";
+import { EDITOR_PAGES, EditorPageId } from "./components/editor/pages";
+
 import { tauriService } from "./services/tauriService";
-import { DashboardPage, DummyEditorPage } from "./views/Pages";
 
-import EditorHub from "./views/EditorHub";
-import { EDITOR_PAGES, EditorPageId } from "./editor/pages";
-
-type Tab = "dashboard" | "editor" | "produce" | "preview" | "publish" | "settings";
 type EditorRoute = "hub" | EditorPageId;
+type Tab = "dashboard" | "editor" | "produce" | "preview" | "publish" | "settings";
 
 export default function App() {
   const [workspacePath, setWorkspacePath] = useState<string | null>(null);
@@ -58,7 +61,7 @@ export default function App() {
   }
 
   if (!workspacePath) {
-    return <SetupView onComplete={(ws) => setWorkspacePath(ws)} />;
+    return <SetupPage onComplete={(ws) => setWorkspacePath(ws)} />;
   }
 
   function renderContent() {
@@ -66,32 +69,14 @@ export default function App() {
       case "dashboard":
         return <DashboardPage />;
       case "editor":
-        // If hub: show grid of cards
         if (editorRoute === "hub") {
           return <EditorHub onSelect={selectEditorPage} />;
         }
-
-        // Else: show the “page editor” mock
         return (
-          <div className="space-y-6">
-            {/* Back Button */}
-            <button
-              className="text-sm font-bold text-emerald-700 hover:underline flex items-center gap-2"
-              onClick={() => setEditorRoute("hub")}
-            >
-              <span className="material-symbols-outlined text-base">
-                arrow_back
-              </span>
-              Back to Editor Overview
-            </button>
-
-            <DummyEditorPage
-              title={`Editing: ${
-                EDITOR_PAGES.find((p) => p.id === editorRoute)?.label ?? editorRoute
-              }`}
-              hint="Later: render the real editor for this page."
-            />
-          </div>
+          <EditorRouter
+            pageId={editorRoute}
+            onBack={() => setEditorRoute("hub")}
+          />
         );
       case "preview":
         return <DummyEditorPage title="Live Preview (Mock)" hint="Next: start Vite dev server + show logs." />;

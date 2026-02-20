@@ -1,5 +1,5 @@
 import React from "react";
-import { EDITOR_PAGES, EditorPageId } from "../editor/pages";
+import { EDITOR_PAGES, EditorPageId } from "./pages";
 
 export default function EditorHub(props: { onSelect: (id: EditorPageId) => void }) {
   return (
@@ -24,9 +24,9 @@ export default function EditorHub(props: { onSelect: (id: EditorPageId) => void 
             <div className="flex items-start justify-between gap-4">
               <div className="space-y-2">
                 <div className="flex items-center gap-3">
-                  <span className="material-symbols-outlined text-emerald-500 text-2xl">
+                  <div className="text-emerald-500 text-2xl">
                     {p.icon}
-                  </span>
+                  </div>
                   <h3 className="font-extrabold text-lg text-slate-900">{p.label}</h3>
                 </div>
                 <p className="text-slate-500 text-sm leading-relaxed">{p.description}</p>

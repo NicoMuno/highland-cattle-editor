@@ -2,11 +2,11 @@ import React from "react";
 
 export type DashboardCardProps = {
   title: string;
-  icon: string; // material symbol name
+  icon: string;
   text: string;
-  onClick?: () => void; // future: navigation / quick actions
+  onClick?: () => void;
   disabled?: boolean;
-  variant?: "default" | "success" | "warning"; // future styling knob
+  variant?: "default" | "success" | "warning";
 };
 
 export default function DashboardCard({

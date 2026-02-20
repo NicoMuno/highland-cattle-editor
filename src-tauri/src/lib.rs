@@ -8,6 +8,8 @@ use tauri::{AppHandle, Manager};
 use std::ffi::OsStr;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use base64::{engine::general_purpose, Engine as _};
+
 // -------------------- Workspace persistence --------------------
 
 #[derive(Default)]
@@ -220,9 +222,10 @@ fn replace_image_in_public(
     let public_images_dir = base.join("public").join("images");
 
     let target_dir = public_images_dir.join(&target_subfolder);
-    if target_subfolder.contains("..") || target_subfolder.contains('/') || target_subfolder.contains('\\') {
-        return Err("Invalid target_subfolder".into());
+    if target_subfolder != "pages" && target_subfolder != "cattle" {
+        return Err("Invalid target_subfolder (must be 'pages' or 'cattle')".into());
     }
+
     fs::create_dir_all(&target_dir).map_err(|e| format!("Failed to create target folder: {e}"))?;
 
     // Move old file to legacy
@@ -286,6 +289,39 @@ fn replace_image_in_public(
     Ok(format!("images/{}/{}", target_subfolder, new_filename))
 }
 
+
+#[tauri::command]
+fn read_image_data_url_in_website(
+    state: tauri::State<WorkspaceState>,
+    relative_path: String,
+) -> Result<String, String> {
+    let base = workspace_base_dir(&state)?;
+    let path = resolve_in_workspace_dir(&base, &relative_path)?;
+
+    if !path.exists() {
+        return Err("Image file does not exist.".into());
+    }
+
+    let ext = path
+        .extension()
+        .and_then(OsStr::to_str)
+        .unwrap_or("")
+        .to_lowercase();
+
+    let mime = match ext.as_str() {
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "webp" => "image/webp",
+        _ => return Err("Unsupported image type.".into()),
+    };
+
+    let bytes = fs::read(&path).map_err(|e| format!("Failed to read image: {e}"))?;
+    let b64 = general_purpose::STANDARD.encode(bytes);
+
+    Ok(format!("data:{mime};base64,{b64}"))
+}
+
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -302,7 +338,8 @@ pub fn run() {
             file_exists_in_website,
             read_text_in_website,
             write_text_in_website,
-            replace_image_in_public
+            replace_image_in_public,
+            read_image_data_url_in_website
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
