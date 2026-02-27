@@ -8,6 +8,9 @@ import EditorHub from "./components/editor/EditorHub";
 import EditorRouter from "./components/editor/EditorRouter";
 import { EDITOR_PAGES, EditorPageId } from "./components/editor/pages";
 
+import Preview from "./components/preview/Preview";
+import Publish from "./components/publish/Publish";
+
 import { tauriService } from "./services/tauriService";
 
 type EditorRoute = "hub" | EditorPageId;
@@ -79,9 +82,9 @@ export default function App() {
           />
         );
       case "preview":
-        return <DummyEditorPage title="Live Preview (Mock)" hint="Next: start Vite dev server + show logs." />;
+        return <Preview />;
       case "publish":
-        return <DummyEditorPage title="Publish (Mock)" hint="Next: build + copy dist + git push." />;
+        return <Publish />
       case "settings":
         return (
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-10">

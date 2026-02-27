@@ -1,14 +1,8 @@
 import React, { useMemo, useState } from "react";
 import { tauriService } from "../services/tauriService";
+import { SetupState } from "../types";
 
 type Mode = "browse" | "github";
-
-type SetupState = {
-  githubToken: string;
-  sourceRepoUrl: string;
-  hostedRepoUrl: string;
-  workspacePath: string;
-};
 
 export default function SetupPage(props: { onComplete: (workspacePath: string) => void }) {
   const [mode, setMode] = useState<Mode>("browse");
@@ -16,7 +10,6 @@ export default function SetupPage(props: { onComplete: (workspacePath: string) =
   const [form, setForm] = useState<SetupState>({
     githubToken: "",
     sourceRepoUrl: "https://github.com/my-farm/site-source.git",
-    hostedRepoUrl: "https://github.com/my-farm/site-hosted.git",
     workspacePath: "",
   });
 
@@ -24,6 +17,37 @@ export default function SetupPage(props: { onComplete: (workspacePath: string) =
   const [error, setError] = useState<string | null>(null);
 
   const canContinueBrowse = useMemo(() => !!form.workspacePath, [form.workspacePath]);
+
+  async function saveToken() {
+    try {
+      setError(null);
+      setLogs((p) => [...p, "Saving GitHub token..."]);
+      await tauriService.setGithubToken(form.githubToken.trim());
+      setLogs((p) => [...p, "Token saved locally ✅"]);
+    } catch (e) {
+      setError("Failed to save token: " + String(e));
+      setLogs((p) => [...p, "Error saving token ❌"]);
+    }
+  }
+
+  async function cloneAndContinue() {
+    try {
+      setError(null);
+      setLogs((p) => [...p, "Saving GitHub token..."]);
+      await tauriService.setGithubToken(form.githubToken.trim());
+
+      setLogs((p) => [...p, "Cloning repo (this can take a moment)..."]);
+      const clonedPath = await tauriService.cloneDevRepo(form.sourceRepoUrl.trim(), (log) => {
+        setLogs((p) => [...p, `${log.type.toUpperCase()}: ${log.message}`]);
+      });
+
+      setLogs((p) => [...p, "Repo cloned ✅"]);
+      props.onComplete(clonedPath);
+    } catch (e) {
+      setError(String(e));
+      setLogs((p) => [...p, "Clone failed ❌"]);
+    }
+  }
 
   async function browse() {
     try {
@@ -56,12 +80,6 @@ export default function SetupPage(props: { onComplete: (workspacePath: string) =
     props.onComplete(form.workspacePath);
   }
 
-  function testConnectionNoop() {
-    // Per your request: do nothing (for now)
-    setError(null);
-    setLogs((prev) => [...prev, "Test Connection clicked (noop in MVP)."]);
-  }
-
   return (
     <div className="space-y-10 py-10">
       <div className="text-center max-w-2xl mx-auto">
@@ -87,7 +105,7 @@ export default function SetupPage(props: { onComplete: (workspacePath: string) =
             }`}
             onClick={() => setMode("github")}
           >
-            GitHub Token + URLs
+            GitHub Token
           </button>
         </div>
       </div>
@@ -161,7 +179,9 @@ export default function SetupPage(props: { onComplete: (workspacePath: string) =
                 </h2>
 
                 <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-1">Source Website Repo</label>
+                  <label className="block text-sm font-semibold text-slate-700 mb-1">
+                     Dev Repo (highland-cattle-dev)
+                  </label>
                   <input
                     type="text"
                     className="w-full rounded-lg border border-slate-300 shadow-sm focus:border-emerald-500 focus:ring-emerald-500"
@@ -169,28 +189,31 @@ export default function SetupPage(props: { onComplete: (workspacePath: string) =
                     onChange={(e) => setForm((p) => ({ ...p, sourceRepoUrl: e.target.value }))}
                   />
                 </div>
-
-                <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-1">Hosted/Deployment Repo</label>
-                  <input
-                    type="text"
-                    className="w-full rounded-lg border border-slate-300 shadow-sm focus:border-emerald-500 focus:ring-emerald-500"
-                    value={form.hostedRepoUrl}
-                    onChange={(e) => setForm((p) => ({ ...p, hostedRepoUrl: e.target.value }))}
-                  />
-                </div>
               </div>
 
-              <button
-                onClick={testConnectionNoop}
-                className="w-full mt-6 bg-emerald-500 hover:bg-emerald-600 text-white py-3 rounded-xl font-bold transition-all shadow-lg shadow-emerald-500/20"
-              >
-                Test Connection
-              </button>
+              {error && <div className="text-sm text-rose-600 font-semibold">{error}</div>}
 
-              <p className="text-[10px] text-slate-400 mt-2 leading-relaxed">
-                MVP note: this button is wired but intentionally does nothing yet.
-              </p>
+              <div className="flex flex-col gap-3 pt-2">
+                <button
+                  onClick={saveToken}
+                  disabled={!form.githubToken.trim()}
+                  className="w-full bg-slate-900 hover:bg-slate-800 disabled:bg-slate-300 text-white py-3 rounded-xl font-bold transition-all"
+                >
+                  Save Token
+                </button>
+
+                <button
+                  onClick={cloneAndContinue}
+                  disabled={!form.githubToken.trim() || !form.sourceRepoUrl.trim()}
+                  className="w-full bg-emerald-500 hover:bg-emerald-600 disabled:bg-slate-300 text-white py-3 rounded-xl font-bold transition-all shadow-lg shadow-emerald-500/20"
+                >
+                  Clone & Continue
+                </button>
+
+                <p className="text-[10px] text-slate-400 leading-relaxed">
+                  This will clone the repo into the app workspace and continue into the editor.
+                </p>
+              </div>
             </>
           )}
         </div>

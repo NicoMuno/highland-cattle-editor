@@ -1,7 +1,81 @@
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
+import { listen } from "@tauri-apps/api/event";
+
+import type { LogEntry,  PreviewLogPayload, PublishLogPayload, SetupLogPayload } from "../types";
 
 export const tauriService = {
+
+  // GITHUB TOKEN
+  async getGithubToken(): Promise<string | null> {
+    return await invoke<string | null>("get_github_token");
+  },
+
+  async setGithubToken(token: string): Promise<void> {
+    await invoke("set_github_token", { token });
+  },
+
+  async cloneDevRepo(repoUrl: string, onLog: (log: LogEntry) => void): Promise<string> {
+  const unlisten = await listen<SetupLogPayload>("setup:log", (event) => {
+    const p = event.payload;
+    onLog({
+      timestamp: new Date().toLocaleTimeString(),
+      type: p.type,
+      message: p.message,
+    });
+  });
+
+  try {
+    const path = await invoke<string>("clone_dev_repo", { repoUrl });
+    return path;
+  } finally {
+    unlisten();
+  }
+},
+
+  
+
+  // PUBLISH
+  async runPublish(onLog: (log: LogEntry) => void): Promise<void> {
+    const unlisten = await listen<PublishLogPayload>("publish:log", (event) => {
+      const p = event.payload;
+      onLog({
+        timestamp: new Date().toLocaleTimeString(),
+        type: p.type,
+        message: p.message,
+      });
+    });
+
+    try {
+      await invoke("run_publish");
+    } finally {
+      unlisten();
+    }
+  },
+
+  // PREVIEW
+  async startDevServer(onLog: (log: LogEntry) => void){
+    const unlisten = await listen<PreviewLogPayload>("preview:log", (event) => {
+      const p = event.payload;
+      onLog({
+        timestamp: new Date().toLocaleTimeString(),
+        type: p.type,
+        message: p.message,
+      });
+    });
+
+    try {
+      const url = await invoke<string>("start_preview_dev_server");
+      return { url, unlisten };
+    } catch (e) {
+      unlisten();
+      throw e;
+    }
+  },
+
+  async stopDevServer(): Promise<void> {
+    await invoke("stop_preview_dev_server");
+  },
 
   // WORKSPACE MANAGEMENT
   async getWorkspace(): Promise<string | null> {
