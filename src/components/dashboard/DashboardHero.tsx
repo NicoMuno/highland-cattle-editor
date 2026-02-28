@@ -6,7 +6,7 @@ export default function DashboardHero(props: {
 }) {
   const title = props.title ?? "Welcome back.";
   const subtitle =
-    props.subtitle ?? "This is a mockup shell. Next step: wire real editors + data.";
+    props.subtitle ?? "This App let's you make changes to your website.";
 
   return (
     <div className="bg-emerald-600 p-12 rounded-[2rem] text-white relative overflow-hidden shadow-2xl shadow-emerald-500/20">

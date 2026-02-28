@@ -2,7 +2,6 @@ import React, { useEffect, useState } from "react";
 import Layout from "./components/Layout";
 import SetupPage from "./components/SetupPage";
 import DashboardPage from "./components/dashboard/DashboardPage"
-import DummyEditorPage from "./components/DummyPage";
 
 import EditorHub from "./components/editor/EditorHub";
 import EditorRouter from "./components/editor/EditorRouter";
@@ -10,11 +9,12 @@ import { EDITOR_PAGES, EditorPageId } from "./components/editor/pages";
 
 import Preview from "./components/preview/Preview";
 import Publish from "./components/publish/Publish";
+import Settings from "./components/settings/Settings";
 
 import { tauriService } from "./services/tauriService";
 
 type EditorRoute = "hub" | EditorPageId;
-type Tab = "dashboard" | "editor" | "produce" | "preview" | "publish" | "settings";
+type Tab = "dashboard" | "editor" | "preview" | "publish" | "settings";
 
 export default function App() {
   const [workspacePath, setWorkspacePath] = useState<string | null>(null);
@@ -27,12 +27,20 @@ export default function App() {
     { id: "editor", label: "Web Editor", icon: "view_headline", disabled: !isConfigured },
     { id: "preview", label: "Live Preview", icon: "visibility", disabled: !isConfigured },
     { id: "publish", label: "Publish", icon: "publish", disabled: !isConfigured },
-    { id: "settings", label: "Settings", icon: "settings" },
   ];
 
   // Which website page is selected inside Editor
   const [activeTab, setActiveTab] = useState<Tab>("dashboard");
   const [editorRoute, setEditorRoute] = useState<EditorRoute>("hub");
+
+  const dashboardEl = (
+    <DashboardPage
+      isConfigured={isConfigured}
+      onOpenEditorPage={selectEditorPage}
+      onOpenPreview={() => setActiveTab("preview")}
+      onOpenPublish={() => setActiveTab("publish")}
+    />
+  );
 
   function selectEditorPage(id: EditorPageId) {
     setActiveTab("editor");
@@ -70,7 +78,7 @@ export default function App() {
   function renderContent() {
     switch (activeTab) {
       case "dashboard":
-        return <DashboardPage />;
+        return dashboardEl;
       case "editor":
         if (editorRoute === "hub") {
           return <EditorHub onSelect={selectEditorPage} />;
@@ -84,29 +92,11 @@ export default function App() {
       case "preview":
         return <Preview />;
       case "publish":
-        return <Publish />
+        return <Publish />;
       case "settings":
-        return (
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-10">
-            <h1 className="text-3xl font-black text-slate-900 tracking-tight">Settings</h1>
-            <p className="text-slate-500 mt-2">
-              Workspace: <span className="font-mono text-xs">{workspacePath}</span>
-            </p>
-
-            <button
-              className="mt-6 text-rose-600 font-bold text-sm"
-              onClick={async () => {
-                await tauriService.clearWorkspace();
-                setWorkspacePath(null);
-                setActiveTab("dashboard");
-              }}
-            >
-              Reset Workspace Configuration
-            </button>
-          </div>
-        );
+        return <Settings/>;
       default:
-        return <DashboardPage />;
+          return dashboardEl;
     }
   }
 

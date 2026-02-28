@@ -39,6 +39,7 @@ export default function Layout<TTab extends string, TEditorId extends string = s
         statusLabel={statusLabel}
         statusDotClassName={statusDotClassName}
         editorDropdown={editorDropdown}
+        settingsTabId={"settings" as TTab}
       />
 
       <main className="flex-1 overflow-y-auto relative">

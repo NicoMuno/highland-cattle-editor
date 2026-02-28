@@ -3,11 +3,48 @@ import LogViewer from "../LogViewer";
 import { tauriService } from "../../services/tauriService";
 import { LogEntry, ProcessStatus } from "../../types";
 
+
 export default function Preview() {
   const [status, setStatus] = useState<ProcessStatus>(ProcessStatus.IDLE);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const unlistenRef = useRef<null | (() => void)>(null);
+  const resetChanges = async () => {
+    // Simple confirm dialog (fine for now)
+    const ok = window.confirm(
+      "This will discard ALL uncommitted changes in your website repo (git reset --hard + git clean -fd).\n\nContinue?"
+    );
+    if (!ok) return;
+
+    // If server is running, enforce stop first (matches backend rule)
+    if (status === ProcessStatus.RUNNING || status === ProcessStatus.SUCCESS) {
+      // If SUCCESS, server is likely running; you can force the user to stop first.
+      // Keep it strict to avoid confusing file watcher states.
+      setLogs((prev) => [
+        ...prev,
+        { timestamp: new Date().toLocaleTimeString(), type: "warn", message: "Stop preview before resetting changes." },
+      ]);
+      return;
+    }
+
+    setLogs((prev) => [
+      ...prev,
+      { timestamp: new Date().toLocaleTimeString(), type: "info", message: "Resetting changes..." },
+    ]);
+
+    try {
+      await tauriService.resetPreviewChanges();
+      setLogs((prev) => [
+        ...prev,
+        { timestamp: new Date().toLocaleTimeString(), type: "success", message: "Reset complete." },
+      ]);
+    } catch (err) {
+      setLogs((prev) => [
+        ...prev,
+        { timestamp: new Date().toLocaleTimeString(), type: "error", message: String(err) },
+      ]);
+    }
+  };
 
   useEffect(() => {
     return () => {
@@ -115,11 +152,21 @@ export default function Preview() {
             {previewUrl && (
               <button
                 className="w-full mt-6 bg-slate-900 text-white py-4 rounded-xl font-bold"
-                onClick={() => window.open(previewUrl, "_blank")}
+                onClick={() => previewUrl && tauriService.openExternal(previewUrl)}
               >
                 Open in Browser
               </button>
             )}
+          </div>
+          <div className="sticky bottom-6 flex justify-end">
+            <button
+              onClick={resetChanges}
+              disabled={status === ProcessStatus.RUNNING || status === ProcessStatus.SUCCESS}
+              className="bg-rose-600 disabled:bg-rose-300 text-white text-sm px-2 py-1 rounded-xl shadow-lg"
+              title="Discard all uncommitted changes"
+            >
+              Reset Changes
+            </button>
           </div>
         </div>
       </div>

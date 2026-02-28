@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { listen } from "@tauri-apps/api/event";
+import { openUrl } from "@tauri-apps/plugin-opener";
 
 import type { LogEntry,  PreviewLogPayload, PublishLogPayload, SetupLogPayload } from "../types";
 
@@ -13,6 +14,10 @@ export const tauriService = {
 
   async setGithubToken(token: string): Promise<void> {
     await invoke("set_github_token", { token });
+  },
+  
+  async clearGithubToken(): Promise<void> {
+    await invoke("clear_github_token");
   },
 
   async cloneDevRepo(repoUrl: string, onLog: (log: LogEntry) => void): Promise<string> {
@@ -75,6 +80,14 @@ export const tauriService = {
 
   async stopDevServer(): Promise<void> {
     await invoke("stop_preview_dev_server");
+  },
+
+  async openExternal(url: string) {
+    await openUrl(url);
+  },
+
+  async resetPreviewChanges(): Promise<void> {
+    await invoke("reset_preview_changes");
   },
 
   // WORKSPACE MANAGEMENT

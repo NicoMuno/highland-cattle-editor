@@ -18,6 +18,7 @@ type EditorDropdown<TEditorId extends string> = {
 type SidebarProps<TTab extends string, TEditorId extends string = string> = {
   appName?: string;
   subtitle?: string;
+  editorDropdown?: EditorDropdown<TEditorId>;
 
   activeTab: TTab;
   onTabChange: (tab: TTab) => void;
@@ -26,8 +27,7 @@ type SidebarProps<TTab extends string, TEditorId extends string = string> = {
   statusLabel?: string;
   statusDotClassName?: string;
 
-  // NEW (optional)
-  editorDropdown?: EditorDropdown<TEditorId>;
+  settingsTabId?: TTab;
 };
 
 export default function Sidebar<TTab extends string, TEditorId extends string = string>({
@@ -39,7 +39,10 @@ export default function Sidebar<TTab extends string, TEditorId extends string = 
   statusLabel = "Ready",
   statusDotClassName = "bg-emerald-500 animate-pulse",
   editorDropdown,
+  settingsTabId,
 }: SidebarProps<TTab, TEditorId>) {
+  const isSettingsActive = !!settingsTabId && activeTab === settingsTabId;
+
   return (
     <aside className="w-64 bg-slate-900 text-white flex flex-col shrink-0">
       {/* Brand */}
@@ -125,14 +128,42 @@ export default function Sidebar<TTab extends string, TEditorId extends string = 
 
       {/* Footer */}
       <div className="p-6 border-t border-slate-800">
-        <div className="bg-slate-800/50 rounded-xl p-4">
-          <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">
-            Status
-          </p>
-          <div className="flex items-center gap-2">
-            <div className={`size-2 rounded-full ${statusDotClassName}`} />
-            <span className="text-xs font-medium">{statusLabel}</span>
+        <div className="flex items-stretch gap-3">
+          {/* Status card */}
+          <div className="flex-1 bg-slate-800/50 rounded-xl p-4">
+            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">
+              Status
+            </p>
+            <div className="flex items-center gap-2">
+              <div className={`size-2 rounded-full ${statusDotClassName}`} />
+              <span className="text-xs font-medium">{statusLabel}</span>
+            </div>
           </div>
+
+          {/* Settings icon-only button */}
+          {settingsTabId && (
+            <button
+              type="button"
+              onClick={() => onTabChange(settingsTabId)}
+              className={[
+                "shrink-0 w-12 rounded-xl border transition-colors flex items-center justify-center",
+                isSettingsActive
+                  ? "bg-emerald-500 border-emerald-500 shadow-lg shadow-emerald-500/20"
+                  : "bg-slate-800/50 border-slate-800 hover:bg-slate-800",
+              ].join(" ")}
+              title="Settings"
+              aria-label="Settings"
+            >
+              <span
+                className={[
+                  "material-symbols-outlined",
+                  isSettingsActive ? "text-white" : "text-slate-200",
+                ].join(" ")}
+              >
+                settings
+              </span>
+            </button>
+          )}
         </div>
       </div>
     </aside>

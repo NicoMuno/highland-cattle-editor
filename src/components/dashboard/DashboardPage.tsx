@@ -1,26 +1,47 @@
 import React from "react";
 import DashboardHero from "./DashboardHero";
 import DashboardCardsGrid from "./DashboardCardsGrid";
+import type { EditorPageId } from "../editor/pages";
 
-export default function DashboardPage() {
+type Props = {
+  // open a specific editor page (e.g. "herd")
+  onOpenEditorPage: (id: EditorPageId) => void;
+
+  // open main tabs
+  onOpenPreview: () => void;
+  onOpenPublish: () => void;
+
+  // optional: disable cards when workspace not configured
+  isConfigured: boolean;
+};
+
+export default function DashboardPage({
+  onOpenEditorPage,
+  onOpenPreview,
+  onOpenPublish,
+  isConfigured,
+}: Props) {
   const cards = [
     {
       title: "Quick Herd Edit",
       icon: "edit_note",
-      text: "Placeholder editor page.",
-      onClick: () => alert("TODO: navigate to Hero editor"),
+      text: "Edit animals on the farm.",
+      onClick: () => onOpenEditorPage("herd"),
+      disabled: !isConfigured,
     },
     {
       title: "Live Preview",
       icon: "visibility",
-      text: "Placeholder preview page.",
-      onClick: () => alert("TODO: navigate to Preview"),
+      text: "Run the website locally and preview changes.",
+      onClick: onOpenPreview,
+      disabled: !isConfigured,
     },
     {
       title: "Publish",
       icon: "publish",
-      text: "Placeholder publish workflow.",
-      onClick: () => alert("TODO: navigate to Publish"),
+      text: "Build and publish the website.",
+      onClick: onOpenPublish,
+      disabled: !isConfigured,
     },
   ];
 
