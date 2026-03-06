@@ -107,6 +107,8 @@ The deployment repository used to host the final static website, for example thr
 
 This separation keeps editing, development, and hosting concerns clearly separated.
 
+---
+
 ## How the Website Data Is Stored
 
 The editor does not use a database. Instead, website content is stored in **plain JSON files** inside the website source project.
@@ -120,6 +122,7 @@ This means:
 
 Images are stored in the website's `public/images/...` directories, while text and structured page data are stored in JSON files under `src/data/...`.
 
+---
 
 ## How to Run the Demo
 
@@ -139,6 +142,8 @@ npm run tauri dev
 
 The exact dependency setup for the backend sidecars is described in the backend README.
 
+---
+
 ## How to Build the Application
 
 To create a production build of the desktop application, run the Tauri build command from the editor repository.
@@ -148,6 +153,8 @@ Example:
 ```bash
 npm run tauri build
 ```
+
+---
 
 ## How to Explore, Test, and Extend the Project
 
@@ -241,6 +248,8 @@ Recommended entry point:
 
 This separation makes it easier to contribute to one layer of the application without first needing to understand the full system in detail.
 
+---
+
 ## Documentation Structure
 
 This repository is documented in layers.
@@ -251,6 +260,7 @@ This repository is documented in layers.
 
 This layered documentation approach keeps the root README focused while still providing detailed technical references where needed.
 
+---
 
 ## Suggested Demo Walkthrough
 
@@ -276,28 +286,25 @@ Recommended sequence:
 6. **Publish Page**  
    Show the publish workflow and logs.
 
-### Placeholder for Demo Images
+### Demo Images
 
 ### Setup Page
+![Setup Page](docs/img/Setup.png)
 
-![Setup Page](public\img\Setup.png)
-
-
-### Dashbaord
-![Dashboard](public\img\Dashboard.png)
+### Dashboard
+![Dashboard](docs/img/Dashboard.png)
 
 ### Editor Page
-![Editor Page](public\img\Farmeditor.png)
+![Editor Page](docs/img/Farmeditor.png)
 
 ### Preview
-![Preview](public\img\Preview.png)
+![Preview](docs/img/Preview.png)
 
 ### Publish
-![Publish](public\img\Publish.png)
+![Publish](docs/img/Publish.png)
 
 ### Settings
-
-![Settings](public\img\Settings.png)
+![Settings](docs/img/Settings.png)
 
 ---
 
