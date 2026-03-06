@@ -70,7 +70,7 @@ export default function ContactEditor(props: { onBack?: () => void }) {
     setStatus(null);
     try {
       await tauriService.writeText(CONTACT_PAGE_PATH, prettyJson(page));
-      setStatus("Gespeichert ✅");
+      setStatus("Gespeichert");
     } catch (e: any) {
       setError(String(e?.message ?? e));
     } finally {

@@ -211,7 +211,7 @@ export default function HighlandcattleEditor(props: { onBack?: () => void }) {
     try {
       await tauriService.writeText(PAGE_PATH, prettyJson(page));
       await tauriService.writeText(IMAGES_PATH, prettyJson(images));
-      setStatus("Gespeichert ✅");
+      setStatus("Gespeichert");
     } catch (e: any) {
       setError(String(e?.message ?? e));
     } finally {
@@ -245,7 +245,7 @@ export default function HighlandcattleEditor(props: { onBack?: () => void }) {
       const dataUrl = wsRel ? await tauriService.readImageDataUrl(wsRel) : null;
       setPreviews((p) => ({ ...p, [key]: dataUrl }));
 
-      setStatus("Bild ersetzt ✅ (nicht vergessen zu speichern)");
+      setStatus("Bild ersetzt (nicht vergessen zu speichern!)");
     } catch (e: any) {
       setError(String(e?.message ?? e));
     } finally {

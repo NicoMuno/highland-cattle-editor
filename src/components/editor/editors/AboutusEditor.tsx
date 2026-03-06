@@ -103,7 +103,7 @@ export default function AboutusEditor(props: { onBack?: () => void }) {
     try {
       await tauriService.writeText(ABOUT_PAGE_PATH, prettyJson(page));
       await tauriService.writeText(ABOUT_IMAGES_PATH, prettyJson(images));
-      setStatus("Gespeichert ✅");
+      setStatus("Gespeichert");
     } catch (e: any) {
       setError(String(e?.message ?? e));
     } finally {
@@ -150,7 +150,7 @@ export default function AboutusEditor(props: { onBack?: () => void }) {
         setSamplePreviews((prev) => prev.map((p, i) => (i === index ? dataUrl : p)));
       }
 
-      setStatus("Bild ersetzt ✅ (nicht vergessen zu speichern)");
+      setStatus("Bild ersetzt (nicht vergessen zu speichern!)");
     } catch (e: any) {
       setError(String(e?.message ?? e));
     } finally {

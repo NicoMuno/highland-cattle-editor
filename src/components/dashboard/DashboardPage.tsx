@@ -1,17 +1,12 @@
-import React from "react";
+// import React from "react";
 import DashboardHero from "./DashboardHero";
 import DashboardCardsGrid from "./DashboardCardsGrid";
 import type { EditorPageId } from "../editor/pages";
 
 type Props = {
-  // open a specific editor page (e.g. "herd")
   onOpenEditorPage: (id: EditorPageId) => void;
-
-  // open main tabs
   onOpenPreview: () => void;
   onOpenPublish: () => void;
-
-  // optional: disable cards when workspace not configured
   isConfigured: boolean;
 };
 

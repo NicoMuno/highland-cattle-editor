@@ -1,3 +1,9 @@
+//! Image file operations inside the website workspace.
+//!
+//! This module supports safe image replacement and image loading for preview.
+//! Replaced images are archived in `public/images/legacy/...` before the new
+//! image is copied into its target folder.
+
 use std::fs;
 use std::path::{Path};
 use std::ffi::OsStr;
@@ -11,6 +17,16 @@ use crate::modules::utils::path_safety::resolve_in_workspace_dir;
 use crate::modules::core::state::WorkspaceState;
 use crate::modules::workspace::workspace::workspace_base_dir;
 
+
+/// Replaces an image inside `public/images` and archives the old file.
+///
+/// If `old_relative_path` is provided and the file exists, the old image is
+/// moved to `public/images/legacy/<target_subfolder>/` with a timestamped name.
+/// The new image is copied into either `public/images/pages/` or
+/// `public/images/cattle/`, depending on `target_subfolder`.
+///
+/// Returns the new image path relative to the website root, e.g.
+/// `images/pages/img_1700000000.jpg`.
 #[tauri::command]
 pub fn replace_image_in_public(
     state: State<WorkspaceState>,
@@ -103,6 +119,13 @@ pub fn replace_image_in_public(
     Ok(format!("images/{}/{}", target_subfolder, new_filename))
 }
 
+
+/// Reads an image file from the workspace and returns it as a data URL.
+///
+/// This is used by the frontend to display local workspace images directly
+/// without requiring a separate local web server for the file itself.
+///
+/// Supported formats are PNG, JPG/JPEG, and WEBP.
 #[tauri::command]
 pub fn read_image_data_url_in_website(
     state: State<WorkspaceState>,

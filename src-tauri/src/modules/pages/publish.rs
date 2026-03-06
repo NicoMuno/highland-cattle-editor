@@ -1,131 +1,128 @@
-use std::process::Command;
+//! Publish page backend logic.
+//!
+//! This module stages, commits, and pushes local website changes to GitHub
+//! using the stored personal access token and the configured HTTPS remote.
+
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use tauri::{AppHandle, State};
-
 use base64::{engine::general_purpose, Engine as _};
-
+use tauri_plugin_shell::ShellExt;
 
 use crate::modules::core::config::read_config;
 use crate::modules::core::events::emit_publish;
 use crate::modules::core::process::{run_cmd_stream_lines, StderrMode};
 use crate::modules::core::state::WorkspaceState;
-
-use crate::modules::utils::git::has_git;
+use crate::modules::utils::errors::translate_error_for_farmer;
 use crate::modules::workspace::workspace::workspace_base_dir;
+use crate::modules::utils::git::get_git_path;
 
 
+/// Publishes local workspace changes to the remote GitHub repository.
+///
+/// The workflow performs:
+/// 1. change detection via `git status --porcelain`
+/// 2. staging via `git add -A`
+/// 3. commit creation with a timestamped message
+/// 4. authenticated push to `origin main` over HTTPS
+///
+/// The GitHub token is read from persistent app config and passed as an
+/// HTTP authorization header for the push command.
 #[tauri::command]
 pub async fn run_publish(app: AppHandle, state: State<'_, WorkspaceState>) -> Result<(), String> {
     let base = workspace_base_dir(&state)?;
 
-    // Ensure git repo
     if !base.join(".git").exists() {
-        return Err("Workspace is not a git repository (missing .git).".into());
+        return Err("Dieser Ordner scheint nicht mit dem Internet verbunden zu sein (kein Git-Ordner).".into());
     }
 
-    // Read token
     let cfg = read_config(&app)?;
     let token = cfg
         .github_token
-        .ok_or_else(|| "No GitHub token set. Please add it in Setup/Publish.".to_string())?
+        .ok_or_else(|| "Du bist noch nicht angemeldet. Bitte füge dein Passwort im Setup hinzu.".to_string())?
         .trim()
         .to_string();
 
-    // Check git is available
-    if !has_git() {
-        return Err("Git is not installed or not available in PATH.".into());
-    }
+    emit_publish(&app, "info", "Prüfe auf neue Änderungen...", "git");
 
-    emit_publish(&app, "info", "Checking git status...", "git");
+    let git_exe = get_git_path(&app);
 
-    // git status --porcelain (detect changes)
-    let out = Command::new("git")
-        .current_dir(&base)
+    let out = app.shell().command(&git_exe)
         .args(["status", "--porcelain"])
-        .output()
-        .map_err(|e| format!("git status failed: {e}"))?;
+        .current_dir(&base)
+        .output().await
+        .map_err(|e| format!("Konnte Änderungen nicht prüfen: {}", e))?;
 
     if !out.status.success() {
-        return Err(format!("git status failed: {}", String::from_utf8_lossy(&out.stderr)));
+        let err = translate_error_for_farmer(&String::from_utf8_lossy(&out.stderr));
+        return Err(err);
     }
 
     let porcelain = String::from_utf8_lossy(&out.stdout).trim().to_string();
     if porcelain.is_empty() {
-        emit_publish(&app, "info", "No changes to publish.", "git");
+        emit_publish(&app, "info", "Alles ist bereits auf dem neuesten Stand. Nichts zu tun.", "git");
         return Ok(());
     }
 
-    // git add -A
-    emit_publish(&app, "info", "Staging changes (git add -A)...", "git");
+    emit_publish(&app, "info", "Sammle deine neuesten Entwürfe...", "git");
 
-    tauri::async_runtime::spawn_blocking({
-        let app2 = app.clone();
-        let base2 = base.clone();
-        move || {
-            let mut c = Command::new("git");
-            c.current_dir(&base2).args(["add", "-A"]);
+    let add_cmd = app.shell().command(&git_exe)
+        .args(["add", "-A"])
+        .current_dir(&base);
 
-            run_cmd_stream_lines(
-                &app2,
-                "publish:log",          // event name
-                "git",                  // label
-                c,                      // command
-                StderrMode::AlwaysError // how to classify stderr
-            )
-        }
-    })
+    run_cmd_stream_lines(
+        &app,
+        "publish:log",
+        "git",
+        add_cmd,
+        StderrMode::AlwaysError,
+    )
     .await
-    .map_err(|e| format!("git add task failed: {e:?}"))??;
+    .map_err(|e| format!("Fehler beim Sammeln der Entwürfe: {}", e))?;
 
-    // commit message with timestamp
     let ts = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_err(|e| e.to_string())?
         .as_secs();
     let msg = format!("Publish: {}", ts);
 
-    emit_publish(&app, "info", &format!("Committing ({msg})..."), "git");
-    let commit_out = Command::new("git")
-        .current_dir(&base)
+    emit_publish(&app, "info", "Speichere die Entwürfe...", "git");
+    
+    let commit_out = app.shell().command(&git_exe)
         .args(["commit", "-m", &msg])
-        .output()
-        .map_err(|e| format!("git commit failed: {e}"))?;
-
-    // git commit returns non-zero if nothing to commit; but we already checked changes
-    if !commit_out.status.success() {
-        return Err(format!(
-            "git commit failed: {}",
-            String::from_utf8_lossy(&commit_out.stderr)
-        ));
-    }
-    emit_publish(&app, "success", "Commit created.", "git");
-
-    // Get origin URL
-    let origin_out = Command::new("git")
         .current_dir(&base)
+        .output().await
+        .map_err(|e| format!("Fehler beim Speichern: {}", e))?;
+
+    if !commit_out.status.success() {
+        let err = translate_error_for_farmer(&String::from_utf8_lossy(&commit_out.stderr));
+        return Err(err);
+    }
+    emit_publish(&app, "success", "Entwürfe erfolgreich gespeichert.", "git");
+
+    let origin_out = app.shell().command(&git_exe)
         .args(["remote", "get-url", "origin"])
-        .output()
-        .map_err(|e| format!("git remote get-url failed: {e}"))?;
+        .current_dir(&base)
+        .output().await
+        .map_err(|e| format!("Konnte die Internetadresse deiner Website nicht lesen: {}", e))?;
+
     if !origin_out.status.success() {
-        return Err("Could not read git remote 'origin'. Please set it to your GitHub repo.".into());
+        return Err("Es ist keine Zieladresse hinterlegt. Bitte überprüfe dein Setup.".into());
     }
     let origin = String::from_utf8_lossy(&origin_out.stdout).trim().to_string();
 
-    // Only support https in MVP
     if origin.starts_with("git@") || origin.starts_with("ssh://") {
-        return Err("Remote 'origin' uses SSH. MVP publish supports HTTPS remotes only.".into());
+        return Err("Deine Website ist mit einem falschen Schlüssel (SSH) verknüpft. Bitte nutze HTTPS.".into());
     }
     if !origin.starts_with("https://") {
-        return Err("Remote 'origin' is not HTTPS. MVP publish supports HTTPS remotes only.".into());
+        return Err("Die Zieladresse muss mit https:// beginnen.".into());
     }
 
-    // Build Basic auth header: base64("x-access-token:TOKEN")
     let basic = general_purpose::STANDARD.encode(format!("x-access-token:{token}"));
 
-    emit_publish(&app, "info", "Pushing to GitHub (this may take a moment)...", "git");
+    emit_publish(&app, "info", "Lade Änderungen ins Internet hoch (das kann einen Moment dauern)...", "git");
 
-    let push_out = Command::new("git")
+    let push_out = app.shell().command(&git_exe)
         .current_dir(&base)
         .env("GIT_TERMINAL_PROMPT", "0")
         .env("GCM_INTERACTIVE", "Never")
@@ -136,17 +133,17 @@ pub async fn run_publish(app: AppHandle, state: State<'_, WorkspaceState>) -> Re
             "origin",
             "main",
         ])
-        .output()
-        .map_err(|e| format!("git push failed: {e}"))?;
+        .output().await
+        .map_err(|e| format!("Fehler beim Hochladen: {}", e))?;
 
     if !push_out.status.success() {
         let mut err = String::from_utf8_lossy(&push_out.stderr).to_string();
-        // safety: redact token if it appears anywhere
-        err = err.replace(&token, "<redacted>");
-        return Err(format!("git push failed: {err}"));
+        err = err.replace(&token, "<PASSWORT VERBORGEN>");
+        let friendly_err = translate_error_for_farmer(&err);
+        return Err(friendly_err);
     }
 
-    emit_publish(&app, "success", "Push successful. GitHub Actions will deploy.", "git");
+    emit_publish(&app, "success", "Erfolgreich hochgeladen! Deine Website aktualisiert sich jetzt in den nächsten Minuten.", "git");
     
     Ok(())
 }

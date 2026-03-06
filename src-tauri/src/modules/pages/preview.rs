@@ -1,115 +1,91 @@
-use std::io::{BufRead, BufReader};
-use std::process::{Command, Stdio};
-use std::sync::mpsc;
-use std::time::Duration;
+//! Preview page backend logic.
+//!
+//! This module starts and stops the local development preview server,
+//! detects the Vite preview URL from process output, and supports resetting
+//! uncommitted local changes before publication.
 
 use tauri::{AppHandle, State};
+use tauri_plugin_shell::ShellExt;
+use tauri_plugin_shell::process::CommandEvent;
+use std::process::Command;
 
 use crate::modules::core::events::emit_preview;
 use crate::modules::core::state::{DevServerState, WorkspaceState};
-use crate::modules::utils::node::find_npm;
-use crate::modules::utils::git::has_git;
+use crate::modules::utils::errors::translate_error_for_farmer;
 use crate::modules::workspace::workspace::workspace_base_dir;
+use crate::modules::utils::git::get_git_path;
 
 
+/// Discards all uncommitted local changes in the preview workspace.
+///
+/// This command is only allowed when the preview server is not running.
+/// It performs a hard Git reset and removes untracked files to restore
+/// the workspace to the last committed state.
 #[tauri::command]
-pub fn reset_preview_changes(
+pub async fn reset_preview_changes(
     app: AppHandle,
     state: State<'_, WorkspaceState>,
     dev_state: State<'_, DevServerState>,
 ) -> Result<(), String> {
-    // Safety: don't reset while dev server is running
     {
-        let child_guard = dev_state
-            .child
-            .lock()
-            .map_err(|_| "DevServerState poisoned".to_string())?;
+        let child_guard = dev_state.child.lock().map_err(|_| "Zustandsfehler")?;
         if child_guard.is_some() {
-            emit_preview(
-                &app,
-                "error",
-                "Stop the preview server before resetting changes.",
-                "git",
-            );
-            return Err("Stop the preview server before resetting changes.".into());
+            let msg = "Bitte stoppe zuerst die Vorschau, bevor du Änderungen zurücksetzt.";
+            emit_preview(&app, "error", msg, "git");
+            return Err(msg.into());
         }
-    }
-
-    if !has_git() {
-        emit_preview(&app, "error", "Git is not available on this system.", "git");
-        return Err("Git is not available on this system.".into());
     }
 
     let base = workspace_base_dir(&state)?;
     let site_dir = resolve_site_dir(&base)?;
 
-    // Must be a git repo (you only want to reset the website repo)
     if !site_dir.join(".git").exists() {
-        emit_preview(
-            &app,
-            "error",
-            "Selected website folder is not a git repository (missing .git).",
-            "git",
-        );
-        return Err("Selected website folder is not a git repository (missing .git).".into());
+        return Err("Dieser Ordner scheint nicht mit dem Internet verbunden zu sein (kein Git-Ordner).".into());
     }
 
-    emit_preview(&app, "info", "Checking working tree...", "git");
+    emit_preview(&app, "info", "Prüfe auf offene Änderungen...", "git");
 
-    // Check if there is anything to reset
-    let status_out = Command::new("git")
+    let git_exe = get_git_path(&app);
+
+    let status_out = app.shell().command(&git_exe)
         .args(["status", "--porcelain"])
         .current_dir(&site_dir)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .output()
-        .map_err(|e| format!("Failed to run git status: {e}"))?;
-
-    if !status_out.status.success() {
-        let err = String::from_utf8_lossy(&status_out.stderr).to_string();
-        emit_preview(&app, "error", &format!("git status failed: {err}"), "git");
-        return Err(format!("git status failed: {err}"));
-    }
+        .output().await
+        .map_err(|e| format!("Konnte Git nicht ausführen: {}", e))?;
 
     let porcelain = String::from_utf8_lossy(&status_out.stdout).trim().to_string();
     if porcelain.is_empty() {
-        emit_preview(&app, "info", "No local changes found. Nothing to reset.", "git");
+        emit_preview(&app, "info", "Alles ist auf dem neuesten Stand. Nichts zu tun.", "git");
         return Ok(());
     }
 
-    emit_preview(&app, "info", "Discarding changes (git reset --hard HEAD)...", "git");
-    let s1 = Command::new("git")
+    emit_preview(&app, "info", "Verwerfe aktuelle Entwürfe...", "git");
+    
+    let reset_out = app.shell().command(&git_exe)
         .args(["reset", "--hard", "HEAD"])
         .current_dir(&site_dir)
-        .status()
-        .map_err(|e| format!("Failed to run git reset: {e}"))?;
-    if !s1.success() {
-        emit_preview(&app, "error", "git reset --hard failed.", "git");
-        return Err("git reset --hard failed.".into());
+        .output().await
+        .map_err(|e| e.to_string())?;
+
+    if !reset_out.status.success() {
+        let err = translate_error_for_farmer(&String::from_utf8_lossy(&reset_out.stderr));
+        emit_preview(&app, "error", &err, "git");
+        return Err(err);
     }
 
-    // Optional but safe: ensure staged changes are gone as well
-    // (won't hurt even if nothing is staged)
-    let _ = Command::new("git")
-        .args(["restore", "--staged", "."])
-        .current_dir(&site_dir)
-        .status();
+    let _ = app.shell().command(&git_exe).args(["clean", "-fd"]).current_dir(&site_dir).output().await;
 
-    emit_preview(&app, "info", "Removing untracked files (git clean -fd)...", "git");
-    let s2 = Command::new("git")
-        .args(["clean", "-fd"])
-        .current_dir(&site_dir)
-        .status()
-        .map_err(|e| format!("Failed to run git clean: {e}"))?;
-    if !s2.success() {
-        emit_preview(&app, "error", "git clean -fd failed.", "git");
-        return Err("git clean -fd failed.".into());
-    }
-
-    emit_preview(&app, "info", "Reset complete. All uncommitted changes were removed.", "git");
+    emit_preview(&app, "info", "Entwürfe erfolgreich verworfen. Alles ist wieder wie zuvor.", "git");
     Ok(())
 }
 
+
+/// Starts the local development preview server and returns its URL.
+///
+/// If the server is already running, the existing preview URL is returned.
+/// If dependencies are missing, `bun install` is executed first.
+/// Once the Vite dev server prints its local URL, that URL is stored in
+/// runtime state and returned to the frontend.
 #[tauri::command]
 pub async fn start_preview_dev_server(
     app: AppHandle,
@@ -119,244 +95,153 @@ pub async fn start_preview_dev_server(
     let base = workspace_base_dir(&state)?;
     let site_dir = resolve_site_dir(&base)?;
 
-    // already running?
     {
-        let child_guard = dev_state
-            .child
-            .lock()
-            .map_err(|_| "DevServerState poisoned".to_string())?;
+        let child_guard = dev_state.child.lock().unwrap();
         if child_guard.is_some() {
-            let url_guard = dev_state
-                .url
-                .lock()
-                .map_err(|_| "DevServerState poisoned".to_string())?;
+            let url_guard = dev_state.url.lock().unwrap();
             if let Some(url) = url_guard.clone() {
-                emit_preview(&app, "info", "Dev server already running.", "preview");
+                emit_preview(&app, "info", "Die Vorschau läuft bereits.", "preview");
                 return Ok(url);
-            } else {
-                return Err("Dev server is running but URL is unknown.".into());
             }
         }
     }
 
-    // npm path
-    let npm_path = find_npm()?;
-    emit_preview(&app, "info", &format!("Using npm at: {}", npm_path.display()), "npm");
-
-    // sanity
     if !site_dir.join("package.json").exists() {
-        return Err("Workspace does not look like a Node/Vite project (missing package.json).".into());
+        return Err("Die Website-Struktur ist fehlerhaft (package.json fehlt).".into());
     }
 
-    // npm install if needed
     if !site_dir.join("node_modules").exists() {
-        emit_preview(&app, "info", "node_modules not found. Running npm install...", "npm");
+        emit_preview(&app, "info", "Bereite Website-Bausteine vor (das passiert nur einmal)...", "npm");
 
-        let app2 = app.clone();
-        let site2 = site_dir.clone();
-        let npm2 = npm_path.clone();
+        
+        let install_status = app.shell().sidecar("bun")
+            .map_err(|e| format!("Konnte Bun nicht finden: {}", e))?
+            .args(["install"])
+            .current_dir(&site_dir)
+            .output().await
+            .map_err(|e| format!("Fehler beim Starten der Installation: {}", e))?;
 
-        tauri::async_runtime::spawn_blocking(move || -> Result<(), String> {
-            let mut c = npm_command(&npm2, &["install"]);
-            c.current_dir(&site2)
-                .stdout(Stdio::piped())
-                .stderr(Stdio::piped());
-
-            let mut child = c.spawn().map_err(|e| format!("Failed to start command: {e}"))?;
-
-            let stdout = child.stdout.take();
-            let stderr = child.stderr.take();
-
-            if let Some(stdout) = stdout {
-                let app_stdout = app2.clone();
-                std::thread::spawn(move || {
-                    let reader = BufReader::new(stdout);
-                    for line in reader.lines().flatten() {
-                        // Choose one:
-                        // - clean logs:
-                        let clean = strip_ansi(&line);
-                        emit_preview(&app_stdout, "info", &clean, "npm");
-                        // - or raw logs:
-                        // emit_preview(&app_stdout, "info", &line, "npm");
-                    }
-                });
-            }
-
-            if let Some(stderr) = stderr {
-                let app_stderr = app2.clone();
-                std::thread::spawn(move || {
-                    let reader = BufReader::new(stderr);
-                    for line in reader.lines().flatten() {
-                        let clean = strip_ansi(&line);
-                        emit_preview(&app_stderr, "info", &clean, "npm");
-                    }
-                });
-            }
-
-            let status = child.wait().map_err(|e| e.to_string())?;
-            if !status.success() {
-                return Err(format!("npm install failed: {status}"));
-            }
-            Ok(())
-        })
-        .await
-        .map_err(|e| format!("npm install task failed: {e:?}"))??;
-
-        emit_preview(&app, "info", "npm install finished.", "npm");
-    } else {
-        emit_preview(&app, "info", "node_modules found. Skipping npm install.", "npm");
+        if !install_status.status.success() {
+            let err_txt = String::from_utf8_lossy(&install_status.stderr);
+            let friendly_err = translate_error_for_farmer(&err_txt);
+            return Err(friendly_err);
+        }
+        emit_preview(&app, "info", "Bausteine erfolgreich vorbereitet.", "npm");
     }
 
-    // start dev server (long-running)
-    emit_preview(&app, "info", "Starting Vite dev server (npm run dev)...", "vite");
+    emit_preview(&app, "info", "Starte Vorschau...", "vite");
 
-    let mut cmd = npm_command(&npm_path, &["run", "dev"]);
-    cmd.current_dir(&site_dir)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-
-    let mut child = cmd
+    let (mut rx, child) = app.shell().sidecar("bun")
+        .map_err(|e| format!("Konnte Bun nicht finden: {}", e))?
+        .args(["run", "dev"])
+        .current_dir(&site_dir)
         .spawn()
-        .map_err(|e| format!("Failed to start dev server. ({e})"))?;
+        .map_err(|e| format!("Fehler beim Starten der Vorschau: {}", e))?;
 
-    let stdout_opt = child.stdout.take();
-    let stderr_opt = child.stderr.take();
+    let mut found_url = None;
 
-    if stdout_opt.is_none() && stderr_opt.is_none() {
-        return Err("Failed to capture dev server output (stdout/stderr not piped).".into());
-    }
-
-    let (tx, rx) = mpsc::channel::<String>();
-
-    // stdout thread
-    if let Some(stdout) = stdout_opt {
-        let app_stdout = app.clone();
-        let tx_stdout = tx.clone();
-        std::thread::spawn(move || {
-            let reader = BufReader::new(stdout);
-            for line in reader.lines().flatten() {
+    while let Some(event) = rx.recv().await {
+        match event {
+            CommandEvent::Stdout(bytes) | CommandEvent::Stderr(bytes) => {
+                let line = String::from_utf8_lossy(&bytes).to_string();
                 let clean = strip_ansi(&line);
-
-                // show clean logs (recommended)
-                emit_preview(&app_stdout, "info", &clean, "vite");
-                // or raw:
-                // emit_preview(&app_stdout, "info", &line, "vite");
+                
+                if !clean.trim().is_empty() {
+                    emit_preview(&app, "info", &clean, "vite");
+                }
 
                 if let Some(url) = extract_vite_url(&clean) {
-                    let _ = tx_stdout.send(url);
+                    found_url = Some(url);
+                    break; 
                 }
             }
-        });
-    } else {
-        emit_preview(&app, "info", "Dev server stdout not available (will use stderr only).", "vite");
+            CommandEvent::Terminated(_) => {
+                return Err("Die Vorschau wurde unerwartet direkt nach dem Start beendet.".into());
+            }
+            _ => {}
+        }
     }
 
-    // stderr thread
-    if let Some(stderr) = stderr_opt {
-        let app_stderr = app.clone();
-        let tx_stderr = tx.clone();
-        std::thread::spawn(move || {
-            let reader = BufReader::new(stderr);
-            for line in reader.lines().flatten() {
+    let url = found_url.ok_or_else(|| "Konnte die Adresse der Vorschau nicht erkennen.".to_string())?;
+
+    let app_clone = app.clone();
+    tauri::async_runtime::spawn(async move {
+        while let Some(event) = rx.recv().await {
+            if let CommandEvent::Stdout(bytes) | CommandEvent::Stderr(bytes) = event {
+                let line = String::from_utf8_lossy(&bytes);
                 let clean = strip_ansi(&line);
-                let lower = clean.to_lowercase();
-                let lvl = if lower.contains("error") || lower.contains("failed") || lower.contains("fatal") {
-                    "error"
-                } else {
-                    "info"
-                };
-
-                // show clean logs
-                emit_preview(&app_stderr, lvl, &clean, "vite");
-
-                // IMPORTANT: parse URL from the CLEAN line
-                if let Some(url) = extract_vite_url(&clean) {
-                    let _ = tx_stderr.send(url);
+                if !clean.trim().is_empty() {
+                    emit_preview(&app_clone, "info", &clean, "vite");
                 }
             }
-        });
-    }
+        }
+    });
 
-    // Wait for URL
-    let url = rx
-        .recv_timeout(Duration::from_secs(20))
-        .map_err(|_| "Dev server started, but could not detect the Vite URL (timeout).".to_string())?;
-
-    // store state
     {
-        let mut child_guard = dev_state
-            .child
-            .lock()
-            .map_err(|_| "DevServerState poisoned".to_string())?;
-        *child_guard = Some(child);
-
-        let mut url_guard = dev_state
-            .url
-            .lock()
-            .map_err(|_| "DevServerState poisoned".to_string())?;
-        *url_guard = Some(url.clone());
+        *dev_state.child.lock().unwrap() = Some(child);
+        *dev_state.url.lock().unwrap() = Some(url.clone());
     }
 
-    emit_preview(&app, "info", &format!("Detected Vite URL: {url}"), "vite");
+    emit_preview(&app, "success", &format!("Vorschau ist bereit unter: {}", url), "vite");
     Ok(url)
 }
 
+
+/// Stops the running preview development server.
+///
+/// On Windows, `taskkill /T /F` is used to terminate the full process tree,
+/// including child processes spawned by Bun or Vite. A fallback to the
+/// normal child kill method is used if taskkill fails.
 #[tauri::command]
 pub fn stop_preview_dev_server(
     app: AppHandle,
     dev_state: State<'_, DevServerState>,
 ) -> Result<(), String> {
-    let mut child_opt = dev_state
-        .child
-        .lock()
-        .map_err(|_| "DevServerState poisoned".to_string())?
-        .take();
+    let mut child_opt = dev_state.child.lock().unwrap().take();
+    *dev_state.url.lock().unwrap() = None;
 
-    {
-        let mut url_guard = dev_state
-            .url
-            .lock()
-            .map_err(|_| "DevServerState poisoned".to_string())?;
-        *url_guard = None;
-    }
-
-    let Some(mut child) = child_opt.take() else {
-        emit_preview(&app, "info", "Dev server not running.", "preview");
+    let Some(child) = child_opt.take() else {
+        emit_preview(&app, "info", "Die Vorschau war bereits gestoppt.", "preview");
         return Ok(());
     };
 
-    let pid = child.id();
-    emit_preview(&app, "info", &format!("Stopping dev server (PID={pid})..."), "preview");
+    let pid = child.pid(); // Wir holen uns die Prozess-ID
+    emit_preview(&app, "info", &format!("Beende Vorschau (PID: {})...", pid), "preview");
 
+    // Wir nutzen Windows Taskkill, um den Prozess und ALLE seine Kindprozesse (/T) 
+    // erzwungen (/F) zu beenden.
     let status = Command::new("taskkill")
         .args(["/PID", &pid.to_string(), "/T", "/F"])
         .status();
 
     match status {
         Ok(s) if s.success() => {
-            let _ = child.wait();
-            emit_preview(&app, "info", "Dev server stopped.", "preview");
+            // Nach taskkill rufen wir zur Sicherheit noch .kill() auf, 
+            // um die Rust-Ressourcen sauber freizugeben.
+            let _ = child.kill(); 
+            emit_preview(&app, "success", "Vorschau erfolgreich beendet.", "preview");
             Ok(())
         }
-        Ok(s) => {
-            let _ = child.kill();
-            let _ = child.wait();
-            Err(format!("taskkill failed (exit {s}). Dev server may not be fully stopped."))
-        }
-        Err(e) => {
-            let _ = child.kill();
-            let _ = child.wait();
-            Err(format!("Failed to run taskkill: {e}"))
+        Ok(_) | Err(_) => {
+            // Fallback: Falls taskkill fehlschlägt, versuchen wir das normale kill.
+            if let Err(e) = child.kill() {
+                return Err(format!("Konnte die Vorschau nicht sanft beenden: {}", e));
+            }
+            emit_preview(&app, "success", "Vorschau beendet (Fallback-Methode).", "preview");
+            Ok(())
         }
     }
 }
-
 
 
 ///////////////////////////////////////////////////////////////////////////////
 ////////////////// HELPERS ////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
 
+
+/// Extracts a local Vite preview URL from a log line.
+///
+/// Recognized URL prefixes include localhost and 127.0.0.1 over HTTP/HTTPS.
 pub(crate) fn extract_vite_url(line: &str) -> Option<String> {
     let s = line.trim();
     let candidates = [
@@ -365,7 +250,6 @@ pub(crate) fn extract_vite_url(line: &str) -> Option<String> {
         "https://localhost:",
         "https://127.0.0.1:",
     ];
-
     for c in candidates {
         if let Some(idx) = s.find(c) {
             let rest = &s[idx..];
@@ -376,60 +260,40 @@ pub(crate) fn extract_vite_url(line: &str) -> Option<String> {
     None
 }
 
+
+/// Removes ANSI escape sequences from terminal output.
+///
+/// This is used before forwarding command output to the frontend log viewer
+/// so that colored terminal formatting codes do not appear as raw text.
 pub(crate) fn strip_ansi(s: &str) -> String {
-    // Removes ANSI escape sequences like \x1b[32m, \x1b[1m, etc.
     let mut out = String::with_capacity(s.len());
     let mut chars = s.chars().peekable();
-
     while let Some(c) = chars.next() {
         if c == '\u{1b}' {
             if matches!(chars.peek(), Some('[')) {
-                chars.next(); // '['
+                chars.next();
                 while let Some(cc) = chars.next() {
-                    if cc.is_ascii_alphabetic() {
-                        break;
-                    }
+                    if cc.is_ascii_alphabetic() { break; }
                 }
                 continue;
             }
         }
         out.push(c);
     }
-
     out
 }
 
-/// If user selected a parent folder, try to locate the actual website dir.
-/// - prefer workspace root if it contains package.json
-/// - else accept workspace/highland-cattle-dev if that contains package.json
+
+/// Resolves the actual website project directory from the workspace base path.
+///
+/// Supported layouts:
+/// - the workspace itself is the website repo
+/// - the workspace contains a nested `highland-cattle-dev/` repo
+///
+/// The directory is considered valid if it contains `package.json`.
 pub(crate) fn resolve_site_dir(base: &std::path::Path) -> Result<std::path::PathBuf, String> {
-    if base.join("package.json").exists() {
-        return Ok(base.to_path_buf());
-    }
+    if base.join("package.json").exists() { return Ok(base.to_path_buf()); }
     let nested = base.join("highland-cattle-dev");
-    if nested.join("package.json").exists() {
-        return Ok(nested);
-    }
-    Err("Could not find package.json in workspace. Select the website folder that contains package.json.".into())
+    if nested.join("package.json").exists() { return Ok(nested); }
+    Err("Konnte package.json nicht finden. Ist das der richtige Ordner?".into())
 }
-
-/// Build an npm command. If npm is a .cmd/.bat, run through cmd.exe /C.
-pub(crate) fn npm_command(npm_path: &std::path::Path, args: &[&str]) -> Command {
-    let ext = npm_path
-        .extension()
-        .and_then(|e| e.to_str())
-        .unwrap_or("")
-        .to_ascii_lowercase();
-
-    if ext == "cmd" || ext == "bat" {
-        let mut c = Command::new("cmd");
-        c.arg("/C").arg(npm_path);
-        c.args(args);
-        c
-    } else {
-        let mut c = Command::new(npm_path);
-        c.args(args);
-        c
-    }
-}
-

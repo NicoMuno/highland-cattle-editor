@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { tauriService } from "../../services/tauriService";
 
 export default function Settings() {
@@ -53,7 +53,7 @@ export default function Settings() {
       const p = await tauriService.pickWorkspaceWithDialog();
       if (!p) return;
       setWorkspacePath(p);
-      window.location.reload(); // keep consistent with your prop-free App architecture
+      window.location.reload();
     } catch (e) {
       setError(String(e));
     } finally {
@@ -95,9 +95,21 @@ export default function Settings() {
     setBusy(true);
     setError(null);
     try {
-      await tauriService.clearGithubToken(); // requires step (1) + (2)
+      await tauriService.clearGithubToken();
       setTokenInput("");
       setSavedTokenPresent(false);
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const openLegacyFolder = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await tauriService.openLegacyImagesFolder();
     } catch (e) {
       setError(String(e));
     } finally {
@@ -117,6 +129,31 @@ export default function Settings() {
           {error}
         </div>
       )}
+
+      {/* Storage Management Card */}
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-8">
+        <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
+          <span className="material-symbols-outlined text-amber-600">cleaning_services</span>
+          Storage & Media
+        </h3>
+        
+        <div className="bg-amber-50 p-4 rounded-xl border border-amber-100 mb-4">
+          <p className="text-sm font-semibold text-amber-800">Old Images (Legacy)</p>
+          <p className="text-xs text-amber-700/80 mt-1">
+              Wenn Sie im Editor ein Bild ersetzen, wird das alte Bild in einem Ordner namens „Legacy“ gespeichert. 
+              Sie können diesen Ordner öffnen, um alte Bilder anzusehen oder manuell zu löschen, um Speicherplatz freizugeben.
+          </p>
+        </div>
+
+        <button
+          onClick={openLegacyFolder}
+          disabled={busy || !workspacePath}
+          className="bg-amber-500 text-white px-5 py-2.5 rounded-xl font-bold hover:bg-amber-600 transition-all disabled:opacity-50 flex items-center gap-2"
+        >
+          <span className="material-symbols-outlined text-sm">folder_open</span>
+          Open Legacy Folder
+        </button>
+      </div>
 
       {/* Workspace Card */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-8">
@@ -186,7 +223,7 @@ export default function Settings() {
           <div className="space-y-4">
             {savedTokenPresent ? (
               <div className="bg-emerald-50 p-4 rounded-xl border border-emerald-100">
-                <p className="text-sm font-semibold text-emerald-700">Token is saved ✅</p>
+                <p className="text-sm font-semibold text-emerald-700">Token is saved!</p>
                 <p className="text-xs text-emerald-700/80 mt-1">
                   You can publish from this device.
                 </p>

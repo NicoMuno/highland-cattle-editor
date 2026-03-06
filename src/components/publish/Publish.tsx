@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { confirm } from "@tauri-apps/plugin-dialog";
 import LogViewer from "../LogViewer";
 import { ProcessStatus, LogEntry } from "../../types";
@@ -48,10 +48,7 @@ export default function Publish() {
     try {
       await tauriService.runPublish((log) => setLogs((prev) => [...prev, log]));
       setStatus(ProcessStatus.SUCCESS);
-
-      // Optional: set your real website URL here later (from config)
-      // For now, leave null or hardcode.
-      // setLiveUrl("https://your-domain.com");
+      
     } catch (e) {
       setStatus(ProcessStatus.ERROR);
       pushLog("error", String(e));
@@ -135,9 +132,9 @@ export default function Publish() {
 
             {savedTokenPresent ? (
               <div className="bg-emerald-50 p-4 rounded-xl border border-emerald-100">
-                <p className="text-sm font-semibold text-emerald-700">Token is saved ✅</p>
+                <p className="text-sm font-semibold text-emerald-700">Token is saved!</p>
                 <p className="text-xs text-emerald-700/80 mt-1">
-                  You can publish from this device. (MVP stores token in app config.)
+                  You can publish from this device.
                 </p>
               </div>
             ) : (

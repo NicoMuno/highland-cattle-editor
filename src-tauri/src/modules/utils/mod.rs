@@ -1,3 +1,3 @@
 pub mod git;
 pub mod path_safety;
-pub mod node;
+pub mod errors;

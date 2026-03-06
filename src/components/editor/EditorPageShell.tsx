@@ -12,17 +12,13 @@ type Props = {
   description?: string;
   icon?: React.ReactNode;
 
-  // Top-left back navigation (optional)
   onBack?: () => void;
   backLabel?: string;
 
-  // Right side of header: buttons etc.
   actions?: React.ReactNode;
 
-  // Small status chip under header (optional)
   status?: EditorStatus;
 
-  // Main editor content
   children: React.ReactNode;
 };
 

@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { tauriService } from "../services/tauriService";
 import { SetupState } from "../types";
 
@@ -23,10 +23,10 @@ export default function SetupPage(props: { onComplete: (workspacePath: string) =
       setError(null);
       setLogs((p) => [...p, "Saving GitHub token..."]);
       await tauriService.setGithubToken(form.githubToken.trim());
-      setLogs((p) => [...p, "Token saved locally ✅"]);
+      setLogs((p) => [...p, "Token saved locally!"]);
     } catch (e) {
       setError("Failed to save token: " + String(e));
-      setLogs((p) => [...p, "Error saving token ❌"]);
+      setLogs((p) => [...p, "Error saving token!"]);
     }
   }
 
@@ -41,11 +41,11 @@ export default function SetupPage(props: { onComplete: (workspacePath: string) =
         setLogs((p) => [...p, `${log.type.toUpperCase()}: ${log.message}`]);
       });
 
-      setLogs((p) => [...p, "Repo cloned ✅"]);
+      setLogs((p) => [...p, "Repo cloned!"]);
       props.onComplete(clonedPath);
     } catch (e) {
       setError(String(e));
-      setLogs((p) => [...p, "Clone failed ❌"]);
+      setLogs((p) => [...p, "Clone failed!"]);
     }
   }
 
@@ -61,11 +61,11 @@ export default function SetupPage(props: { onComplete: (workspacePath: string) =
       }
 
       setForm((prev) => ({ ...prev, workspacePath: p }));
-      setLogs((prev) => [...prev, "Workspace selected ✅"]);
+      setLogs((prev) => [...prev, "Workspace selected!"]);
     } catch (e) {
       console.error(e);
       setError("Failed to select workspace: " + String(e));
-      setLogs((prev) => [...prev, "Error selecting workspace ❌"]);
+      setLogs((prev) => [...prev, "Error selecting workspace!"]);
     }
   }
 
@@ -75,8 +75,7 @@ export default function SetupPage(props: { onComplete: (workspacePath: string) =
       return;
     }
     setError(null);
-    setLogs((prev) => [...prev, "Continuing with workspace folder ✅"]);
-    // This is what makes App render Layout (because workspacePath becomes non-null)
+    setLogs((prev) => [...prev, "Continuing with workspace folder!"]);
     props.onComplete(form.workspacePath);
   }
 
@@ -85,8 +84,7 @@ export default function SetupPage(props: { onComplete: (workspacePath: string) =
       <div className="text-center max-w-2xl mx-auto">
         <h1 className="text-4xl font-extrabold text-slate-900 tracking-tight">Connect Your Workspace</h1>
         <p className="mt-4 text-lg text-slate-500">
-          Choose how you want to connect: either select an existing local folder, or enter GitHub credentials
-          (mocked for now).
+          Choose how you want to connect: either select an existing local folder, or enter GitHub credentials.
         </p>
 
         {/* Toggle */}
@@ -169,7 +167,7 @@ export default function SetupPage(props: { onComplete: (workspacePath: string) =
                     onChange={(e) => setForm((p) => ({ ...p, githubToken: e.target.value }))}
                   />
                   <p className="text-[10px] text-slate-400 mt-2 leading-relaxed">
-                    Stored locally in app config. Never share it. Requires <b>Contents: Read/Write</b>.
+                    Stored locally in app config. Never share it. Token Requires <b>Contents: Read/Write</b>.
                   </p>
                 </div>
 

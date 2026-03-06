@@ -21,24 +21,22 @@ export const tauriService = {
   },
 
   async cloneDevRepo(repoUrl: string, onLog: (log: LogEntry) => void): Promise<string> {
-  const unlisten = await listen<SetupLogPayload>("setup:log", (event) => {
-    const p = event.payload;
-    onLog({
-      timestamp: new Date().toLocaleTimeString(),
-      type: p.type,
-      message: p.message,
+    const unlisten = await listen<SetupLogPayload>("setup:log", (event) => {
+      const p = event.payload;
+      onLog({
+        timestamp: new Date().toLocaleTimeString(),
+        type: p.type,
+        message: p.message,
+      });
     });
-  });
 
-  try {
-    const path = await invoke<string>("clone_dev_repo", { repoUrl });
-    return path;
-  } finally {
-    unlisten();
-  }
-},
-
-  
+    try {
+      const path = await invoke<string>("clone_dev_repo", { repoUrl });
+      return path;
+    } finally {
+      unlisten();
+    }
+  },
 
   // PUBLISH
   async runPublish(onLog: (log: LogEntry) => void): Promise<void> {
@@ -106,6 +104,10 @@ export const tauriService = {
 
   async clearWorkspace(): Promise<void> {
     await invoke("clear_workspace_folder");
+  },
+
+  async openLegacyImagesFolder(): Promise<void> {
+    await invoke("open_legacy_images_folder");
   },
 
   // FILE I/O

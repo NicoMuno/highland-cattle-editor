@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import LogViewer from "../LogViewer";
 import { tauriService } from "../../services/tauriService";
 import { LogEntry, ProcessStatus } from "../../types";
@@ -10,16 +10,12 @@ export default function Preview() {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const unlistenRef = useRef<null | (() => void)>(null);
   const resetChanges = async () => {
-    // Simple confirm dialog (fine for now)
     const ok = window.confirm(
       "This will discard ALL uncommitted changes in your website repo (git reset --hard + git clean -fd).\n\nContinue?"
     );
     if (!ok) return;
 
-    // If server is running, enforce stop first (matches backend rule)
     if (status === ProcessStatus.RUNNING || status === ProcessStatus.SUCCESS) {
-      // If SUCCESS, server is likely running; you can force the user to stop first.
-      // Keep it strict to avoid confusing file watcher states.
       setLogs((prev) => [
         ...prev,
         { timestamp: new Date().toLocaleTimeString(), type: "warn", message: "Stop preview before resetting changes." },
@@ -48,14 +44,11 @@ export default function Preview() {
 
   useEffect(() => {
     return () => {
-      // stop listening to log events
       if (unlistenRef.current) {
         unlistenRef.current();
         unlistenRef.current = null;
       }
-      // best-effort stop the dev server (ignore errors)
-      tauriService.stopDevServer().catch(() => {});
-    };
+    }
   }, []);
 
   const startServer = async () => {

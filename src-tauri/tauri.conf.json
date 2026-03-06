@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "highland-cattle-editor",
+  "productName": "Farm Webeditor",
   "version": "0.1.0",
   "identifier": "com.highland-cattle-editor.app",
   "build": {
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "highland-cattle-editor",
+        "title": "Farm Webeditor",
         "width": 800,
         "height": 600
       }
@@ -23,13 +23,19 @@
   },
   "bundle": {
     "active": true,
-    "targets": "all",
+    "targets": ["nsis"],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
+    ],
+    "externalBin": [
+      "dependencies/binaries/bun"
+    ],
+    "resources": [
+      "dependencies/resources/mingit/**/*"
     ]
   }
 }

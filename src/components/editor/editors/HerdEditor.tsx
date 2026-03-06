@@ -145,7 +145,7 @@ export default function HerdEditor(props: { onBack?: () => void }) {
       await tauriService.writeText(PAGE_PATH, prettyJson(page));
       await tauriService.writeText(IMAGES_PATH, prettyJson(images));
       await tauriService.writeText(CATTLE_PATH, prettyJson(cattle));
-      setStatus("Gespeichert ✅");
+      setStatus("Gespeichert");
     } catch (e: any) {
       setError(String(e?.message ?? e));
     } finally {
@@ -178,7 +178,7 @@ export default function HerdEditor(props: { onBack?: () => void }) {
       const dataUrl = wsRel ? await tauriService.readImageDataUrl(wsRel) : null;
       setPagePreviews((p) => ({ ...p, [which]: dataUrl }));
 
-      setStatus("Bild ersetzt ✅ (nicht vergessen zu speichern)");
+      setStatus("Bild ersetzt (nicht vergessen zu speichern!)");
     } catch (e: any) {
       setError(String(e?.message ?? e));
     } finally {
@@ -220,9 +220,6 @@ export default function HerdEditor(props: { onBack?: () => void }) {
     if (!cattle) return;
     const nextArr = cattle[cat].filter((_, i) => i !== idx);
     setCattle({ ...cattle, [cat]: nextArr });
-
-    // previews will be slightly “off” until reload; acceptable for MVP.
-    // If you want perfect syncing, we can rebuild cattlePreviews after every edit.
   }
 
   async function replaceCattleImage(cat: HerdCategory, idx: number) {
@@ -250,7 +247,7 @@ export default function HerdEditor(props: { onBack?: () => void }) {
       const key = `${cat}:${idx}`;
       setCattlePreviews((p) => ({ ...p, [key]: dataUrl }));
 
-      setStatus("Tierbild ersetzt ✅ (nicht vergessen zu speichern)");
+      setStatus("Tierbild ersetzt (nicht vergessen zu speichern!)");
     } catch (e: any) {
       setError(String(e?.message ?? e));
     } finally {
@@ -260,7 +257,6 @@ export default function HerdEditor(props: { onBack?: () => void }) {
 
   useEffect(() => {
     load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   if (loading) {
