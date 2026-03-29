@@ -14,7 +14,11 @@ use crate::modules::core::events::emit_setup;
 use crate::modules::core::process::{run_cmd_stream_lines, StderrMode};
 use crate::modules::core::state::WorkspaceState;
 use crate::modules::utils::errors::translate_error_for_farmer;
-use crate::modules::utils::git::{validate_github_https_repo_url,get_git_path};
+use crate::modules::utils::git::{
+    ensure_repo_git_identity,
+    get_git_path,
+    validate_github_https_repo_url,
+};
 use crate::modules::workspace::workspace::{default_workspace_dir, set_state_workspace};
 
 /// Clones the website development repository into the default workspace.
@@ -77,7 +81,7 @@ pub async fn clone_dev_repo(
             &target.to_string_lossy(),
         ]);
 
-    if let Err(err) = run_cmd_stream_lines(&app, "setup:log", "git", cmd, StderrMode::SetupHeuristic).await {
+    if let Err(err) = run_cmd_stream_lines(&app, "setup:log", "git", cmd, StderrMode::Heuristic).await {
         let friendly_error = translate_error_for_farmer(&err);
         emit_setup(&app, "error", &friendly_error, "clone");
         
@@ -91,6 +95,16 @@ pub async fn clone_dev_repo(
         emit_setup(&app, "error", msg, "clone");
         let _ = fs::remove_dir_all(&target);
         return Err(msg.into());
+    }
+
+    emit_setup(&app, "info", "Bereite Git für spätere Veröffentlichungen vor...", "clone");
+
+    if let Err(err) = ensure_repo_git_identity(&app, &target).await {
+        let friendly_error = translate_error_for_farmer(&err);
+        emit_setup(&app, "error", &friendly_error, "clone");
+        let _ = fs::remove_dir_all(&target);
+        emit_setup(&app, "info", "Reste vom fehlgeschlagenen Vorgang wurden aufgeräumt.", "clone");
+        return Err(friendly_error);
     }
 
     set_state_workspace(&state, target.clone());

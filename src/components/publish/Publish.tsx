@@ -7,11 +7,10 @@ import { tauriService } from "../../services/tauriService";
 export default function Publish() {
   const [status, setStatus] = useState<ProcessStatus>(ProcessStatus.IDLE);
   const [logs, setLogs] = useState<LogEntry[]>([]);
-  const [liveUrl, setLiveUrl] = useState<string | null>(null);
 
   const [savedTokenPresent, setSavedTokenPresent] = useState<boolean>(false);
   const [tokenInput, setTokenInput] = useState<string>("");
-
+  const [publishBusy, setPublishBusy] = useState(false);
   useEffect(() => {
     (async () => {
       const t = await tauriService.getGithubToken();
@@ -32,33 +31,37 @@ export default function Publish() {
   };
 
   const runPublish = async () => {
+    if (publishBusy || status === ProcessStatus.RUNNING || !savedTokenPresent) {
+      return;
+    }
+
     const ok = await confirm(
       "This will commit and push your changes to GitHub. Continue?",
-      { title: "Confirm Publish", kind: "warning" }
+      {
+        title: "Confirm Publish",
+        kind: "warning",
+        okLabel: "Publish",
+        cancelLabel: "Cancel",
+      }
     );
+
     if (!ok) {
       pushLog("info", "Publish cancelled.");
       return;
     }
 
+    setPublishBusy(true);
     setStatus(ProcessStatus.RUNNING);
     setLogs([]);
-    setLiveUrl(null);
-
     try {
       await tauriService.runPublish((log) => setLogs((prev) => [...prev, log]));
       setStatus(ProcessStatus.SUCCESS);
-      
     } catch (e) {
       setStatus(ProcessStatus.ERROR);
       pushLog("error", String(e));
+    } finally {
+      setPublishBusy(false);
     }
-  };
-
-  const reset = () => {
-    setStatus(ProcessStatus.IDLE);
-    setLogs([]);
-    setLiveUrl(null);
   };
 
   const statusLabel = useMemo(() => {
@@ -80,7 +83,10 @@ export default function Publish() {
     }
   }, [status]);
 
-  const canPublish = savedTokenPresent && status !== ProcessStatus.RUNNING;
+  const canPublish =
+    savedTokenPresent &&
+    status !== ProcessStatus.RUNNING &&
+    !publishBusy;
 
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -91,15 +97,6 @@ export default function Publish() {
         </div>
 
         <div className="flex gap-3">
-          {status === ProcessStatus.SUCCESS && (
-            <button
-              onClick={reset}
-              className="bg-slate-200 text-slate-900 px-6 py-2.5 rounded-xl font-bold hover:bg-slate-300 transition-all"
-            >
-              Reset
-            </button>
-          )}
-
           <button
             onClick={runPublish}
             disabled={!canPublish}
@@ -166,15 +163,6 @@ export default function Publish() {
                 <span className="text-sm font-semibold">{statusLabel}</span>
               </div>
             </div>
-
-            {status === ProcessStatus.SUCCESS && liveUrl && (
-              <button
-                className="w-full mt-6 bg-slate-900 text-white py-3 rounded-xl font-bold"
-                onClick={() => window.open(liveUrl, "_blank")}
-              >
-                Open Live Website
-              </button>
-            )}
           </div>
         </div>
       </div>

@@ -9,36 +9,67 @@ export default function Preview() {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const unlistenRef = useRef<null | (() => void)>(null);
+  const [resetBusy, setResetBusy] = useState(false);
   const resetChanges = async () => {
-    const ok = window.confirm(
-      "This will discard ALL uncommitted changes in your website repo (git reset --hard + git clean -fd).\n\nContinue?"
-    );
-    if (!ok) return;
+    if (resetBusy) return;
 
     if (status === ProcessStatus.RUNNING || status === ProcessStatus.SUCCESS) {
       setLogs((prev) => [
         ...prev,
-        { timestamp: new Date().toLocaleTimeString(), type: "warn", message: "Stop preview before resetting changes." },
+        {
+          timestamp: new Date().toLocaleTimeString(),
+          type: "warn",
+          message: "Stop preview before resetting changes.",
+        },
       ]);
       return;
     }
 
+    const ok = await tauriService.confirmResetChanges();
+    if (!ok) {
+      setLogs((prev) => [
+        ...prev,
+        {
+          timestamp: new Date().toLocaleTimeString(),
+          type: "info",
+          message: "Reset cancelled.",
+        },
+      ]);
+      return;
+    }
+
+    setResetBusy(true);
+
     setLogs((prev) => [
       ...prev,
-      { timestamp: new Date().toLocaleTimeString(), type: "info", message: "Resetting changes..." },
+      {
+        timestamp: new Date().toLocaleTimeString(),
+        type: "info",
+        message: "Resetting changes...",
+      },
     ]);
 
     try {
       await tauriService.resetPreviewChanges();
       setLogs((prev) => [
         ...prev,
-        { timestamp: new Date().toLocaleTimeString(), type: "success", message: "Reset complete." },
+        {
+          timestamp: new Date().toLocaleTimeString(),
+          type: "success",
+          message: "Reset complete.",
+        },
       ]);
     } catch (err) {
       setLogs((prev) => [
         ...prev,
-        { timestamp: new Date().toLocaleTimeString(), type: "error", message: String(err) },
+        {
+          timestamp: new Date().toLocaleTimeString(),
+          type: "error",
+          message: String(err),
+        },
       ]);
+    } finally {
+      setResetBusy(false);
     }
   };
 
@@ -154,11 +185,11 @@ export default function Preview() {
           <div className="sticky bottom-6 flex justify-end">
             <button
               onClick={resetChanges}
-              disabled={status === ProcessStatus.RUNNING || status === ProcessStatus.SUCCESS}
+              disabled={resetBusy || status === ProcessStatus.RUNNING || status === ProcessStatus.SUCCESS}
               className="bg-rose-600 disabled:bg-rose-300 text-white text-sm px-2 py-1 rounded-xl shadow-lg"
               title="Discard all uncommitted changes"
             >
-              Reset Changes
+              {resetBusy ? "Resetting..." : "Reset Changes"}
             </button>
           </div>
         </div>

@@ -28,6 +28,7 @@ pub fn run() {
 
             // images
             workspace::images::replace_image_in_public,
+            workspace::images::archive_image_in_public,
             workspace::images::read_image_data_url_in_website,
 
             // preview

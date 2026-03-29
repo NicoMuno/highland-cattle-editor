@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { open } from "@tauri-apps/plugin-dialog";
+import { open, confirm  } from "@tauri-apps/plugin-dialog";
 import { listen } from "@tauri-apps/api/event";
 import { openUrl } from "@tauri-apps/plugin-opener";
 
@@ -88,6 +88,18 @@ export const tauriService = {
     await invoke("reset_preview_changes");
   },
 
+  async confirmResetChanges(): Promise<boolean> {
+    return await confirm(
+      "This will discard ALL uncommitted changes in your website repo (git reset --hard + git clean -fd).\n\nContinue?",
+      {
+        title: "Reset Changes",
+        kind: "warning",
+        okLabel: "Reset",
+        cancelLabel: "Cancel",
+      }
+    );
+  },
+
   // WORKSPACE MANAGEMENT
   async getWorkspace(): Promise<string | null> {
     return await invoke<string | null>("load_workspace_from_config");
@@ -130,13 +142,23 @@ export const tauriService = {
   },
 
   async replaceImage(args: {
-    oldRelativePath: string | null;      
-    newAbsPath: string;                
+    oldRelativePath: string | null;
+    newAbsPath: string;
     targetSubfolder: "pages" | "cattle";
   }): Promise<string> {
     return await invoke<string>("replace_image_in_public", {
       oldRelativePath: args.oldRelativePath,
       newAbsPath: args.newAbsPath,
+      targetSubfolder: args.targetSubfolder,
+    });
+  },
+
+  async archiveImage(args: {
+    relativePath: string;
+    targetSubfolder: "pages" | "cattle";
+  }): Promise<void> {
+    await invoke("archive_image_in_public", {
+      relativePath: args.relativePath,
       targetSubfolder: args.targetSubfolder,
     });
   },

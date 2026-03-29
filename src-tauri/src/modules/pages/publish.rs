@@ -70,15 +70,16 @@ pub async fn run_publish(app: AppHandle, state: State<'_, WorkspaceState>) -> Re
         .args(["add", "-A"])
         .current_dir(&base);
 
-    run_cmd_stream_lines(
+    if let Err(err) = run_cmd_stream_lines(
         &app,
         "publish:log",
         "git",
         add_cmd,
-        StderrMode::AlwaysError,
-    )
-    .await
-    .map_err(|e| format!("Fehler beim Sammeln der Entwürfe: {}", e))?;
+        StderrMode::Heuristic,
+    ).await {
+        let friendly_err = translate_error_for_farmer(&err);
+        return Err(friendly_err);
+    }
 
     let ts = SystemTime::now()
         .duration_since(UNIX_EPOCH)

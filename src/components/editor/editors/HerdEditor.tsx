@@ -70,10 +70,43 @@ export default function HerdEditor(props: { onBack?: () => void }) {
     footer: null,
   });
 
-  // Store cattle previews by category+index (simple & robust for MVP)
+  // Store cattle previews by category+index
   const [cattlePreviews, setCattlePreviews] = useState<Record<string, string | null>>({});
 
   const isReady = useMemo(() => !!page && !!images && !!cattle, [page, images, cattle]);
+
+  function isRealPublicImagePath(path?: string | null): path is string {
+    if (!path) return false;
+    if (!path.startsWith("images/")) return false;
+
+    const lower = path.toLowerCase();
+    return (
+      lower.endsWith(".png") ||
+      lower.endsWith(".jpg") ||
+      lower.endsWith(".jpeg") ||
+      lower.endsWith(".webp")
+    );
+  }
+
+  function createEmptyCattleItem(): CattleItem {
+    return {
+      name: "",
+      birthYear: new Date().getFullYear(),
+      character: "",
+      path: "", // important: no fake folder path
+    };
+  }
+
+  function getCategoryLabel(cat: HerdCategory) {
+    switch (cat) {
+      case "bulls":
+        return "Unsere Bullen";
+      case "cows":
+        return "Unsere Kühe";
+      case "calves":
+        return "Unsere Kälber";
+    }
+  }
 
   async function load() {
     setLoading(true);
@@ -109,24 +142,20 @@ export default function HerdEditor(props: { onBack?: () => void }) {
       const categories: HerdCategory[] = ["bulls", "cows", "calves"];
 
       for (const cat of categories) {
-        nextCattle[cat].forEach(async (item, idx) => {
-          const rel = publicPathToWorkspaceRelative(item.path);
-          const key = `${cat}:${idx}`;
-          nextPrev[key] = rel ? await tauriService.readImageDataUrl(rel) : null;
-        });
-      }
-
-      // Because of async in forEach, do it sequential instead for determinism:
-      const nextPrev2: Record<string, string | null> = {};
-      for (const cat of categories) {
         for (let idx = 0; idx < nextCattle[cat].length; idx++) {
           const item = nextCattle[cat][idx];
-          const rel = publicPathToWorkspaceRelative(item.path);
           const key = `${cat}:${idx}`;
-          nextPrev2[key] = rel ? await tauriService.readImageDataUrl(rel) : null;
+
+          if (isRealPublicImagePath(item.path)) {
+            const rel = publicPathToWorkspaceRelative(item.path);
+            nextPrev[key] = rel ? await tauriService.readImageDataUrl(rel) : null;
+          } else {
+            nextPrev[key] = null;
+          }
         }
       }
-      setCattlePreviews(nextPrev2);
+
+      setCattlePreviews(nextPrev);
     } catch (e: any) {
       setError(String(e?.message ?? e));
     } finally {
@@ -203,27 +232,94 @@ export default function HerdEditor(props: { onBack?: () => void }) {
 
   function updateCattleField(cat: HerdCategory, idx: number, patch: Partial<CattleItem>) {
     if (!cattle) return;
-    const nextArr = cattle[cat].map((c, i) => (i === idx ? { ...c, ...patch } : c));
-    setCattle({ ...cattle, [cat]: nextArr });
+
+    const nextArr = cattle[cat].map((item, i) =>
+      i === idx ? { ...item, ...patch } : item
+    );
+
+    setCattle({
+      ...cattle,
+      [cat]: nextArr,
+    });
   }
 
   function addCattle(cat: HerdCategory) {
     if (!cattle) return;
-    const nextArr = [
-      ...cattle[cat],
-      { name: "Neues Tier", birthYear: new Date().getFullYear(), character: "", path: "images/cattle/" } as any,
-    ];
-    setCattle({ ...cattle, [cat]: nextArr });
+
+    const nextItem = createEmptyCattleItem();
+
+    setCattle({
+      ...cattle,
+      [cat]: [...cattle[cat], nextItem],
+    });
+
+    setStatus(`${getCategoryLabel(cat)}: neues Tier hinzugefügt`);
+    setError(null);
   }
 
-  function removeCattle(cat: HerdCategory, idx: number) {
+  async function removeCattle(cat: HerdCategory, idx: number) {
     if (!cattle) return;
-    const nextArr = cattle[cat].filter((_, i) => i !== idx);
-    setCattle({ ...cattle, [cat]: nextArr });
+
+    setBusy(true);
+    setError(null);
+    setStatus(null);
+
+    try {
+      const item = cattle[cat][idx];
+      if (!item) {
+        throw new Error("Tier konnte nicht gefunden werden.");
+      }
+
+      if (isRealPublicImagePath(item.path)) {
+        await tauriService.archiveImage({
+          relativePath: item.path,
+          targetSubfolder: "cattle",
+        });
+      }
+
+      const nextArr = cattle[cat].filter((_, i) => i !== idx);
+
+      const nextCattle = {
+        ...cattle,
+        [cat]: nextArr,
+      };
+
+      setCattle(nextCattle);
+
+      setCattlePreviews((prev) => {
+        const updated: Record<string, string | null> = {};
+
+        for (const [key, value] of Object.entries(prev)) {
+          const [entryCat, entryIdxRaw] = key.split(":");
+          const entryIdx = Number(entryIdxRaw);
+
+          if (entryCat !== cat) {
+            updated[key] = value;
+          } else if (entryIdx < idx) {
+            updated[key] = value;
+          } else if (entryIdx > idx) {
+            updated[`${cat}:${entryIdx - 1}`] = value;
+          }
+        }
+
+        return updated;
+      });
+
+      setStatus(
+        isRealPublicImagePath(item.path)
+          ? "Tier entfernt und Bild nach Legacy verschoben – bitte speichern!!"
+          : "Tier entfernt – bitte speichern!!"
+      );
+    } catch (e: any) {
+      setError(String(e?.message ?? e));
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function replaceCattleImage(cat: HerdCategory, idx: number) {
     if (!cattle) return;
+
     const picked = await tauriService.pickImageFile();
     if (!picked) return;
 
@@ -232,22 +328,38 @@ export default function HerdEditor(props: { onBack?: () => void }) {
     setStatus(null);
 
     try {
-      const oldRel = cattle[cat][idx].path;
+      const currentItem = cattle[cat][idx];
+      if (!currentItem) {
+        throw new Error("Tier konnte nicht gefunden werden.");
+      }
+
+      const oldRel = isRealPublicImagePath(currentItem.path) ? currentItem.path : null;
 
       const newRel = await tauriService.replaceImage({
-        oldRelativePath: oldRel ?? null,
+        oldRelativePath: oldRel,
         newAbsPath: picked,
         targetSubfolder: "cattle",
       });
 
-      updateCattleField(cat, idx, { path: newRel });
+      const nextArr = cattle[cat].map((item, i) =>
+        i === idx ? { ...item, path: newRel } : item
+      );
+
+      setCattle({
+        ...cattle,
+        [cat]: nextArr,
+      });
 
       const wsRel = publicPathToWorkspaceRelative(newRel);
       const dataUrl = wsRel ? await tauriService.readImageDataUrl(wsRel) : null;
-      const key = `${cat}:${idx}`;
-      setCattlePreviews((p) => ({ ...p, [key]: dataUrl }));
 
-      setStatus("Tierbild ersetzt (nicht vergessen zu speichern!)");
+      const key = `${cat}:${idx}`;
+      setCattlePreviews((prev) => ({
+        ...prev,
+        [key]: dataUrl,
+      }));
+
+      setStatus(oldRel ? "Tierbild ersetzt (nicht vergessen zu speichern!)" : "Tierbild hinzugefügt (nicht vergessen zu speichern!)");
     } catch (e: any) {
       setError(String(e?.message ?? e));
     } finally {
@@ -508,17 +620,25 @@ export default function HerdEditor(props: { onBack?: () => void }) {
             {(["bulls", "cows", "calves"] as const).map((cat) => (
               <div key={cat} className="rounded-2xl border border-slate-200 bg-slate-50 p-4 space-y-4">
                 <div className="flex items-center justify-between">
-                  <div className="font-black text-slate-900 text-sm">
-                    {cat === "bulls" ? "Unsere Bullen" : cat === "cows" ? "Unsere Kühe" : "Unsere Kälber"}
-                  </div>
+                  <div className="font-black text-slate-900 text-sm">{getCategoryLabel(cat)}</div>
                   <button
                     onClick={() => addCattle(cat)}
                     disabled={busy}
                     className="px-3 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs disabled:opacity-50"
                   >
-                    Tier hinzufügen
+                    {cat === "bulls"
+                      ? "Bulle hinzufügen"
+                      : cat === "cows"
+                      ? "Kuh hinzufügen"
+                      : "Kalb hinzufügen"}
                   </button>
                 </div>
+
+                {cattle[cat].length === 0 && (
+                  <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-6 text-sm text-slate-500">
+                    Noch keine Tiere in dieser Kategorie. Über den Button oben kannst du das erste Tier anlegen.
+                  </div>
+                )}
 
                 <div className="space-y-4">
                   {cattle[cat].map((item, idx) => {
@@ -528,7 +648,7 @@ export default function HerdEditor(props: { onBack?: () => void }) {
                     return (
                       <div key={prevKey} className="rounded-2xl border border-slate-200 bg-white p-4">
                         <div className="flex items-start justify-between gap-3">
-                          <div className="font-black text-slate-900">{item.name || "Tier"}</div>
+                          <div className="font-black text-slate-900">{item.name || "Neues Tier"}</div>
                           <button
                             onClick={() => removeCattle(cat, idx)}
                             disabled={busy}
@@ -552,7 +672,11 @@ export default function HerdEditor(props: { onBack?: () => void }) {
                             <input
                               type="number"
                               value={item.birthYear}
-                              onChange={(e) => updateCattleField(cat, idx, { birthYear: Number(e.target.value) })}
+                              onChange={(e) =>
+                                updateCattleField(cat, idx, {
+                                  birthYear: Number(e.target.value),
+                                })
+                              }
                               className="w-full rounded-xl border border-slate-300 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 px-3 py-2"
                               disabled={busy}
                             />
@@ -572,14 +696,16 @@ export default function HerdEditor(props: { onBack?: () => void }) {
                           <div className="p-3 bg-slate-50 flex items-center justify-between gap-3">
                             <div>
                               <div className="text-xs text-slate-500">Bildpfad</div>
-                              <div className="text-[10px] text-slate-400 font-mono mt-1">{item.path}</div>
+                              <div className="text-[10px] text-slate-400 font-mono mt-1">
+                                {item.path || "Noch kein Bild gewählt"}
+                              </div>
                             </div>
                             <button
                               onClick={() => replaceCattleImage(cat, idx)}
                               disabled={busy}
                               className="px-3 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs disabled:opacity-50"
                             >
-                              Bild ersetzen…
+                              {isRealPublicImagePath(item.path) ? "Bild ersetzen…" : "Bild hinzufügen…"}
                             </button>
                           </div>
 

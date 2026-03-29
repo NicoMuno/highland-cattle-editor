@@ -5,19 +5,15 @@
 //! It is primarily used by setup and publish workflows.
 
 use tauri::{AppHandle, Emitter};
-use tauri_plugin_shell::process::{CommandEvent, Command}; 
-
+use tauri_plugin_shell::process::{Command, CommandEvent};
 
 /// Controls how stderr output is classified when streaming process logs.
 ///
 /// Some command-line tools write non-critical progress information to stderr.
-/// This enum allows the caller to choose whether stderr should always be
-/// treated as an error or classified using a simple heuristic.
+/// This enum allows the caller to choose how stderr should be interpreted.
 pub(crate) enum StderrMode {
-    /// Treat every stderr line as an error.
-    AlwaysError,
     /// Classify stderr lines heuristically into info or error.
-    SetupHeuristic,
+    Heuristic,
 }
 
 /// Runs a shell command and streams its output line by line to the frontend.
@@ -37,11 +33,9 @@ pub(crate) async fn run_cmd_stream_lines(
     cmd: Command,
     stderr_mode: StderrMode,
 ) -> Result<(), String> {
-    // spawn() -> returns rx for consol output and process object (child)
     let (mut rx, _child) = cmd
         .spawn()
-        .map_err(|e| format!("Fehler beim Starten des Sidecars ({}): {}", label, e))?;
-
+        .map_err(|e| format!("Fehler beim Starten des Prozesses ({}): {}", label, e))?;
 
     while let Some(event) = rx.recv().await {
         match event {
@@ -58,16 +52,19 @@ pub(crate) async fn run_cmd_stream_lines(
                 let line = String::from_utf8_lossy(&line_bytes).trim().to_string();
                 if !line.is_empty() {
                     let lvl = match stderr_mode {
-                        StderrMode::AlwaysError => "error",
-                        StderrMode::SetupHeuristic => {
+                        StderrMode::Heuristic => {
                             let l = line.to_lowercase();
-                            if l.contains("error") || l.contains("fatal") || l.contains("authentication") {
+                            if l.contains("error")
+                                || l.contains("fatal")
+                                || l.contains("authentication")
+                            {
                                 "error"
                             } else {
                                 "info"
                             }
                         }
                     };
+
                     let _ = app.emit(
                         event_name,
                         serde_json::json!({ "type": lvl, "message": line, "label": label }),
@@ -78,14 +75,13 @@ pub(crate) async fn run_cmd_stream_lines(
                 return Err(format!("Unerwarteter Prozessfehler: {}", err));
             }
             CommandEvent::Terminated(payload) => {
-                // Wenn der Prozess beendet ist, prüfen wir, ob er erfolgreich war (Code 0)
                 if payload.code != Some(0) {
                     return Err(format!("Vorgang fehlgeschlagen (Exit-Code: {:?})", payload.code));
                 }
             }
-            _ => {} 
+            _ => {}
         }
     }
-    
+
     Ok(())
 }
